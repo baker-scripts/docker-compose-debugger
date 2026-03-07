@@ -207,7 +207,7 @@ describe('stripNoise', () => {
             XDG_DATA_HOME: '/config/.local/share',
             PUID: '1000',
             TZ: 'America/New_York',
-            API_KEY: 'secret123',
+            API_KEY: 'secret123', // pragma: allowlist secret
           },
         },
       },
