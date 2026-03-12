@@ -101,6 +101,16 @@ npx vitest run --coverage      # Run with coverage report
 - No analytics, tracking, or external requests
 - The "Open PrivateBin" and "Open GitHub Gist" buttons copy to clipboard and open a new tab — you paste manually
 
+## Contributors
+
+<a href="https://github.com/baker-scripts/docker-compose-debugger/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=baker-scripts/docker-compose-debugger" alt="Contributors" />
+</a>
+
+## Disclaimer
+
+This tool is provided as-is with no warranty. While all processing happens client-side, always verify redaction output before sharing. The authors are not responsible for any accidentally exposed secrets.
+
 ## License
 
 MIT
