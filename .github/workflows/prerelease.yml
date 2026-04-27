@@ -35,7 +35,8 @@ jobs:
           if [ -z "$LATEST" ]; then
             NUM=1
           else
-            NUM=$(echo "$LATEST" | sed "s/v${BASE_VERSION}-pre\.\([0-9]*\)/\1/")
+            PREFIX="v${BASE_VERSION}-pre."
+            NUM="${LATEST#"$PREFIX"}"
             NUM=$((NUM + 1))
           fi
           TAG="v${BASE_VERSION}-pre.${NUM}"
