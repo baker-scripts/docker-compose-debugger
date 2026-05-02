@@ -18,6 +18,13 @@ export const DEFAULT_CONFIG: SanitizerConfig = {
     'credential',
     'private[_\\-.]?key',
     'vpn[_\\-.]?user',
+    '[_.\\-](url|uri|dsn|conn(?:ection)?(?:_string)?)$',
+    '^(database|redis|mongo|amqp|rabbit|celery|postgres|mysql|elastic)[_.\\-]?(url|uri|dsn)?$',
+    'aws[_\\-.]?(access|secret)[_\\-.]?key',
+    'tailscale[_\\-.]?(auth)?[_\\-.]?key',
+    'webhook',
+    'pat$',
+    '^gh[_\\-.]?(token|pat)',
   ],
   safeKeys: [
     'PUID', 'PGID', 'TZ', 'UMASK', 'UMASK_SET',
