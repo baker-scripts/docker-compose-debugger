@@ -378,6 +378,138 @@ describe('parseServices', () => {
       const result = parseServices(compose)
       expect(result[0].extras).toEqual(new Map())
     })
+
+    it('derives user from explicit user: directive only', () => {
+      const compose = {
+        services: { app: { image: 'nginx', user: '1000:1000' } },
+      }
+      const result = parseServices(compose)
+      expect(result[0].extras.get('user')).toBe('1000:1000')
+    })
+
+    it('derives user from PUID/PGID env when no directive', () => {
+      const compose = {
+        services: {
+          app: {
+            image: 'lscr.io/linuxserver/sonarr',
+            environment: { PUID: '1000', PGID: '1000' },
+          },
+        },
+      }
+      const result = parseServices(compose)
+      expect(result[0].extras.get('user')).toBe('1000:1000')
+    })
+
+    it('collapses to single value when user: matches PUID:PGID', () => {
+      const compose = {
+        services: {
+          app: {
+            image: 'app',
+            user: '1000:1000',
+            environment: { PUID: '1000', PGID: '1000' },
+          },
+        },
+      }
+      const result = parseServices(compose)
+      expect(result[0].extras.get('user')).toBe('1000:1000')
+    })
+
+    it('shows directive + env annotation when they differ', () => {
+      const compose = {
+        services: {
+          app: {
+            image: 'app',
+            user: '0:0',
+            environment: { PUID: '1000', PGID: '1000' },
+          },
+        },
+      }
+      const result = parseServices(compose)
+      expect(result[0].extras.get('user')).toBe('0:0 (PUID=1000 PGID=1000)')
+    })
+
+    it('handles PUID alone', () => {
+      const compose = {
+        services: { app: { image: 'app', environment: { PUID: '1000' } } },
+      }
+      const result = parseServices(compose)
+      expect(result[0].extras.get('user')).toBe('PUID=1000')
+    })
+
+    it('omits user extra when no user info present', () => {
+      const compose = {
+        services: { app: { image: 'app' } },
+      }
+      const result = parseServices(compose)
+      expect(result[0].extras.has('user')).toBe(false)
+    })
+
+    it('orders user before other extras', () => {
+      const compose = {
+        services: {
+          app: {
+            image: 'app',
+            user: '1000:1000',
+            restart: 'unless-stopped',
+            hostname: 'myhost',
+          },
+        },
+      }
+      const result = parseServices(compose)
+      const keys = Array.from(result[0].extras.keys())
+      expect(keys[0]).toBe('user')
+    })
+
+    it('looks up PUID/PGID/UMASK case-insensitively', () => {
+      const compose = {
+        services: {
+          app: {
+            image: 'app',
+            environment: { puid: '1000', Pgid: '1000', umask: '022' },
+          },
+        },
+      }
+      const result = parseServices(compose)
+      expect(result[0].userGroup.puid).toBe('1000')
+      expect(result[0].userGroup.pgid).toBe('1000')
+      expect(result[0].userGroup.umask).toBe('022')
+      expect(result[0].extras.get('user')).toBe('1000:1000')
+    })
+  })
+
+  describe('userGroup extraction', () => {
+    it('captures explicit user, PUID, PGID, group_add, UMASK', () => {
+      const compose = {
+        services: {
+          app: {
+            image: 'app',
+            user: '1000:1001',
+            group_add: ['video', 'render'],
+            environment: { PUID: '1000', PGID: '1001', UMASK: '002' },
+          },
+        },
+      }
+      const result = parseServices(compose)
+      expect(result[0].userGroup).toEqual({
+        user: '1000:1001',
+        puid: '1000',
+        pgid: '1001',
+        groupAdd: ['video', 'render'],
+        umask: '002',
+      })
+    })
+
+    it('returns empty values when nothing is set', () => {
+      const compose = { services: { app: { image: 'app' } } }
+      const result = parseServices(compose)
+      expect(result[0].userGroup).toEqual({
+        user: '',
+        puid: '',
+        pgid: '',
+        groupAdd: [],
+        umask: '',
+      })
+    })
   })
 
   // Immutability

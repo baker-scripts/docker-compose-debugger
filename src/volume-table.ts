@@ -1,6 +1,72 @@
 import { el } from './dom'
 import { buildVolumeMatrix, type VolumeMapping } from './volume-utils'
-import type { ServiceInfo } from './services'
+import type { ServiceInfo, UserGroupInfo } from './services'
+
+const EM_DASH = '—'
+
+interface UserGroupRow {
+  readonly label: string
+  readonly cells: readonly string[]
+}
+
+function userGroupRows(services: readonly ServiceInfo[]): readonly UserGroupRow[] {
+  const cell = (svc: ServiceInfo, fn: (ug: UserGroupInfo) => string): string => {
+    const v = fn(svc.userGroup)
+    return v === '' ? EM_DASH : v
+  }
+  const rows: UserGroupRow[] = [
+    { label: 'user:', cells: services.map(s => cell(s, ug => ug.user)) },
+    { label: 'PUID', cells: services.map(s => cell(s, ug => ug.puid)) },
+    { label: 'PGID', cells: services.map(s => cell(s, ug => ug.pgid)) },
+    { label: 'group_add', cells: services.map(s => cell(s, ug => ug.groupAdd.join(', '))) },
+    { label: 'UMASK', cells: services.map(s => cell(s, ug => ug.umask)) },
+  ]
+  // Hide rows where every service has em-dash (nothing to compare).
+  return rows.filter(r => r.cells.some(c => c !== EM_DASH))
+}
+
+export function renderUserGroupTable(services: readonly ServiceInfo[]): HTMLElement {
+  const wrap = el('div', { className: 'volume-table-wrap' })
+  if (services.length === 0) return wrap
+
+  const rows = userGroupRows(services)
+  if (rows.length === 0) return wrap
+
+  const table = el('table', { className: 'volume-table' })
+
+  const thead = el('thead')
+  const headerRow = el('tr')
+  const propTh = el('th')
+  propTh.textContent = 'User / Group'
+  headerRow.appendChild(propTh)
+  for (const svc of services) {
+    const th = el('th')
+    th.textContent = svc.name
+    headerRow.appendChild(th)
+  }
+  thead.appendChild(headerRow)
+  table.appendChild(thead)
+
+  const tbody = el('tbody')
+  for (const row of rows) {
+    const tr = el('tr')
+    const labelTd = el('td')
+    labelTd.textContent = row.label
+    labelTd.style.fontWeight = '600'
+    tr.appendChild(labelTd)
+    for (const value of row.cells) {
+      const td = el('td')
+      td.textContent = value
+      if (value === EM_DASH) td.className = 'vol-empty'
+      tr.appendChild(td)
+    }
+    tbody.appendChild(tr)
+  }
+  table.appendChild(tbody)
+
+  wrap.appendChild(table)
+  return wrap
+}
 
 function formatCell(mapping: VolumeMapping): string {
   return mapping.mode ? `${mapping.target} (${mapping.mode})` : mapping.target
