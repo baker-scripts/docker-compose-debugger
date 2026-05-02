@@ -510,6 +510,15 @@ describe('parseServices', () => {
         umask: '',
       })
     })
+
+    it('coerces numeric user: scalars (unquoted YAML) to string', () => {
+      // Unquoted `user: 1000` parses as a number; the directive should still
+      // surface in the user field rather than being silently dropped.
+      const compose = { services: { app: { image: 'app', user: 1000 } } }
+      const result = parseServices(compose)
+      expect(result[0].userGroup.user).toBe('1000')
+      expect(result[0].extras.get('user')).toBe('1000')
+    })
   })
 
   // Immutability

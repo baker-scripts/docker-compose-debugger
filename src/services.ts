@@ -130,11 +130,20 @@ function envLookupCI(env: ReadonlyMap<string, string>, name: string): string {
   return ''
 }
 
+// Compose accepts user as either a quoted string ("1000:1000") or a bare YAML
+// scalar (1000). js-yaml parses the bare form to a number, so coerce both.
+function readUserDirective(service: Record<string, unknown>): string {
+  const v = service['user']
+  if (typeof v === 'string') return v.trim()
+  if (typeof v === 'number') return String(v)
+  return ''
+}
+
 function extractUserGroup(service: Record<string, unknown>, env: ReadonlyMap<string, string>): UserGroupInfo {
   const groupAddRaw = service['group_add']
   const groupAdd = Array.isArray(groupAddRaw) ? groupAddRaw.map(String) : []
   return {
-    user: typeof service['user'] === 'string' ? service['user'].trim() : '',
+    user: readUserDirective(service),
     puid: envLookupCI(env, 'PUID'),
     pgid: envLookupCI(env, 'PGID'),
     groupAdd,
@@ -143,7 +152,7 @@ function extractUserGroup(service: Record<string, unknown>, env: ReadonlyMap<str
 }
 
 function deriveUser(service: Record<string, unknown>, env: ReadonlyMap<string, string>): string {
-  const directive = typeof service['user'] === 'string' ? service['user'].trim() : ''
+  const directive = readUserDirective(service)
   const puid = envLookupCI(env, 'PUID')
   const pgid = envLookupCI(env, 'PGID')
 

@@ -215,6 +215,23 @@ describe('formatForGitHub', () => {
     expect(result).toContain('### Services')
     expect(result).not.toContain('### Volume Comparison')
   })
+
+  it('includes User / Group section when userGroup data is present', () => {
+    const services = [
+      makeService({
+        name: 'app',
+        image: 'nginx',
+        userGroup: { user: '1000:1000', puid: '1000', pgid: '1000', groupAdd: ['video'], umask: '022' },
+      }),
+    ]
+    const result = formatForGitHub(buildCombinedMarkdown(services))
+    expect(result).toContain('### User / Group')
+    expect(result).toContain('| User / Group | app |')
+    expect(result).toContain('| user: | 1000:1000 |')
+    expect(result).toContain('| PUID | 1000 |')
+    expect(result).toContain('| group_add | video |')
+    expect(result).toContain('| UMASK | 022 |')
+  })
 })
 
 describe('formatForDiscord', () => {
@@ -255,5 +272,21 @@ describe('formatForDiscord', () => {
     const result = formatForDiscord(buildCombinedMarkdown(services))
     expect(result).toContain('**Services**')
     expect(result).not.toContain('**Volume Comparison**')
+  })
+
+  it('includes User / Group section wrapped in fenced code', () => {
+    const services = [
+      makeService({
+        name: 'app',
+        image: 'nginx',
+        userGroup: { user: '1000:1000', puid: '', pgid: '', groupAdd: [], umask: '' },
+      }),
+    ]
+    const result = formatForDiscord(buildCombinedMarkdown(services))
+    expect(result).toContain('**User / Group**\n```\n')
+    expect(result).toContain('| user: | 1000:1000 |')
+    // Three sections expected: Services + User/Group (volumes omitted, no volumes data)
+    const fences = (result.match(/```/g) ?? []).length
+    expect(fences).toBe(4)
   })
 })

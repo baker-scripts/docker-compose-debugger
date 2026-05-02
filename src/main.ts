@@ -9,7 +9,7 @@ import { copyToClipboard, openPrivateBin, openGist } from './clipboard'
 import { createShortNotice, createPiiWarning, createFullDisclaimer } from './disclaimer'
 import { el } from './dom'
 import { parseServices } from './services'
-import { buildCombinedMarkdown, formatForDiscord, formatForGitHub, generateMarkdownTable, generateVolumeComparisonMarkdown } from './markdown'
+import { buildCombinedMarkdown, formatForDiscord, formatForGitHub } from './markdown'
 import { renderCards } from './cards'
 import { renderServiceTable, renderUserGroupTable, renderVolumeTable } from './volume-table'
 
@@ -481,25 +481,21 @@ function init(): void {
               volumesContainer.appendChild(volTable)
             }
 
-            // Markdown preview textarea
-            const svcMd = generateMarkdownTable(services)
-            const volMd = generateVolumeComparisonMarkdown(services)
-            const mdParts: string[] = []
-            if (svcMd) mdParts.push(svcMd)
-            if (volMd) mdParts.push(volMd)
-            if (mdParts.length > 0) {
-              const combinedMd = mdParts.join('\n\n')
+            // Markdown preview — share the exact pipeline used by the copy
+            // buttons so what's previewed is identical to what gets copied.
+            const previewMd = formatForGitHub(buildCombinedMarkdown(services))
+            if (previewMd) {
               const mdLabel = el('label')
               mdLabel.textContent = 'Markdown preview (GitHub format) — use the buttons above to copy GitHub or Discord variants:'
               mdLabel.style.marginTop = '0.75rem'
               volumesContainer.appendChild(mdLabel)
               const mdPreview = el('textarea', {
                 className: 'code-textarea',
-                rows: String(Math.min(combinedMd.split('\n').length + 1, 18)),
+                rows: String(Math.min(previewMd.split('\n').length + 1, 18)),
                 readonly: 'true',
                 spellcheck: 'false',
               })
-              mdPreview.value = combinedMd
+              mdPreview.value = previewMd
               volumesContainer.appendChild(mdPreview)
             }
           }
