@@ -9,9 +9,9 @@ import { copyToClipboard, openPrivateBin, openGist } from './clipboard'
 import { createShortNotice, createPiiWarning, createFullDisclaimer } from './disclaimer'
 import { el } from './dom'
 import { parseServices } from './services'
-import { generateMarkdownTable, generateVolumeComparisonMarkdown } from './markdown'
+import { buildCombinedMarkdown, formatForDiscord, formatForGitHub, generateMarkdownTable, generateVolumeComparisonMarkdown } from './markdown'
 import { renderCards } from './cards'
-import { renderServiceTable, renderVolumeTable } from './volume-table'
+import { renderServiceTable, renderUserGroupTable, renderVolumeTable } from './volume-table'
 
 const MAX_INPUT_BYTES = 512 * 1024
 
@@ -263,20 +263,29 @@ function init(): void {
   piiWarning.classList.add('hidden')
   app.appendChild(piiWarning)
 
-  // Tab bar (hidden until output)
+  // Tab bar (hidden until output). Table is default — most users want the
+  // service overview as a quick read; YAML view is the full sanitized output.
   const tabBar = el('div', { className: 'tab-bar hidden' })
-  const yamlTab = el('button', { className: 'tab-btn active' })
-  yamlTab.textContent = 'YAML'
-  tabBar.appendChild(yamlTab)
+  const volumesTab = el('button', { className: 'tab-btn active' })
+  volumesTab.textContent = 'Table'
+  tabBar.appendChild(volumesTab)
   const cardsTab = el('button', { className: 'tab-btn' })
   cardsTab.textContent = 'Cards'
   tabBar.appendChild(cardsTab)
-  const volumesTab = el('button', { className: 'tab-btn' })
-  volumesTab.textContent = 'Table'
-  tabBar.appendChild(volumesTab)
+  const yamlTab = el('button', { className: 'tab-btn' })
+  yamlTab.textContent = 'YAML'
+  tabBar.appendChild(yamlTab)
   app.appendChild(tabBar)
 
-  // Output textarea (YAML view)
+  // Volumes container (default visible after sanitize)
+  const volumesContainer = el('div', { id: 'volumes', className: 'hidden' })
+  app.appendChild(volumesContainer)
+
+  // Cards container (hidden by default)
+  const cardsContainer = el('div', { id: 'cards', className: 'cards-container hidden' })
+  app.appendChild(cardsContainer)
+
+  // Output textarea (YAML view, hidden by default)
   const output = el('textarea', {
     id: 'output',
     className: 'code-textarea hidden',
@@ -285,14 +294,6 @@ function init(): void {
     spellcheck: 'false',
   })
   app.appendChild(output)
-
-  // Cards container (hidden by default)
-  const cardsContainer = el('div', { id: 'cards', className: 'cards-container hidden' })
-  app.appendChild(cardsContainer)
-
-  // Volumes container (hidden by default)
-  const volumesContainer = el('div', { id: 'volumes', className: 'hidden' })
-  app.appendChild(volumesContainer)
 
   // Track current parsed object for markdown generation
   let currentParsed: Record<string, unknown> | null = null
@@ -332,54 +333,51 @@ function init(): void {
   })
   actions.appendChild(copyBtn)
 
-  const mdBtn = el('button', { className: 'btn btn-secondary' })
-  mdBtn.textContent = 'Copy as Markdown'
-  mdBtn.addEventListener('click', async () => {
-    if (!currentParsed) {
-      mdBtn.textContent = 'No data'
-      setTimeout(() => { mdBtn.textContent = 'Copy as Markdown' }, 1500)
-      return
-    }
-    const services = parseServices(currentParsed)
-    const parts: string[] = []
-    const serviceTable = generateMarkdownTable(services)
-    if (serviceTable) {
-      parts.push('### Services\n\n' + serviceTable)
-    }
-    const volTable = generateVolumeComparisonMarkdown(services)
-    if (volTable) {
-      parts.push('### Volume Comparison\n\n' + volTable)
-    }
-    const md = parts.join('\n\n')
-    const ok = await copyToClipboard(md || 'No services found')
-    mdBtn.textContent = ok ? 'Copied!' : 'Copy failed'
-    setTimeout(() => { mdBtn.textContent = 'Copy as Markdown' }, 1500)
-  })
-  actions.appendChild(mdBtn)
+  function makeMarkdownButton(label: string, format: (p: ReturnType<typeof buildCombinedMarkdown>) => string): HTMLButtonElement {
+    const btn = el('button', { className: 'btn btn-secondary' })
+    btn.textContent = label
+    btn.addEventListener('click', async () => {
+      if (!currentParsed) {
+        btn.textContent = 'No data'
+        setTimeout(() => { btn.textContent = label }, 1500)
+        return
+      }
+      const services = parseServices(currentParsed)
+      const md = format(buildCombinedMarkdown(services))
+      const ok = await copyToClipboard(md || 'No services found')
+      btn.textContent = ok ? 'Copied!' : 'Copy failed'
+      setTimeout(() => { btn.textContent = label }, 1500)
+    })
+    return btn
+  }
 
-  const pbBtn = el('button', { className: 'btn btn-secondary', title: 'Tip: Set expiry to 1 week or longer so support can review it' })
-  pbBtn.textContent = 'Open PrivateBin'
-  pbBtn.addEventListener('click', async () => {
-    await copyToClipboard(output.value)
-    openPrivateBin()
-  })
-  actions.appendChild(pbBtn)
+  actions.appendChild(makeMarkdownButton('Copy MD (GitHub)', formatForGitHub))
+  actions.appendChild(makeMarkdownButton('Copy MD (Discord)', formatForDiscord))
 
-  const logsBtn = el('button', { className: 'btn btn-secondary' })
-  logsBtn.textContent = 'Open logs.notifiarr.com'
-  logsBtn.addEventListener('click', async () => {
-    await copyToClipboard(output.value)
-    window.open('https://logs.notifiarr.com/', '_blank', 'noopener,noreferrer')
-  })
-  actions.appendChild(logsBtn)
+  // Open* buttons must call window.open synchronously inside the click handler
+  // before any await — otherwise Safari (and strict popup blockers) drop the
+  // user-activation token and the popup is blocked.
+  function makeOpenButton(label: string, url: string, title?: string): HTMLButtonElement {
+    const btn = el('button', { className: 'btn btn-secondary' })
+    btn.textContent = label
+    if (title) btn.setAttribute('title', title)
+    btn.addEventListener('click', () => {
+      window.open(url, '_blank', 'noopener,noreferrer')
+      copyToClipboard(output.value).then(ok => {
+        btn.textContent = ok ? 'Copied! → opened tab' : 'Tab opened (copy failed)'
+        setTimeout(() => { btn.textContent = label }, 1800)
+      })
+    })
+    return btn
+  }
 
-  const gistBtn = el('button', { className: 'btn btn-secondary' })
-  gistBtn.textContent = 'Open GitHub Gist'
-  gistBtn.addEventListener('click', async () => {
-    await copyToClipboard(output.value)
-    openGist()
-  })
-  actions.appendChild(gistBtn)
+  actions.appendChild(makeOpenButton(
+    'Open PrivateBin',
+    'https://privatebin.net/',
+    'Tip: Set expiry to 1 week or longer so support can review it',
+  ))
+  actions.appendChild(makeOpenButton('Open logs.notifiarr.com', 'https://logs.notifiarr.com/'))
+  actions.appendChild(makeOpenButton('Open GitHub Gist', 'https://gist.github.com/'))
 
   app.appendChild(actions)
 
@@ -445,8 +443,8 @@ function init(): void {
         output.value = result.output ?? ''
         currentParsed = result.parsed
 
-        // Reset to YAML tab
-        switchTab(yamlTab)
+        // Reset to Table tab — best default for quick scanning
+        switchTab(volumesTab)
 
         // Render cards + volume table
         cardsContainer.replaceChildren()
@@ -463,9 +461,25 @@ function init(): void {
             const svcTable = renderServiceTable(services)
             volumesContainer.appendChild(svcTable)
 
+            // Render user/group comparison table (only if at least one service has data)
+            const ugTable = renderUserGroupTable(services)
+            if (ugTable.firstChild) {
+              const ugLabel = el('label')
+              ugLabel.textContent = 'User / Group comparison:'
+              ugLabel.style.marginTop = '0.75rem'
+              volumesContainer.appendChild(ugLabel)
+              volumesContainer.appendChild(ugTable)
+            }
+
             // Render volume comparison table
             const volTable = renderVolumeTable(services)
-            volumesContainer.appendChild(volTable)
+            if (volTable.firstChild) {
+              const volLabel = el('label')
+              volLabel.textContent = 'Volume comparison:'
+              volLabel.style.marginTop = '0.75rem'
+              volumesContainer.appendChild(volLabel)
+              volumesContainer.appendChild(volTable)
+            }
 
             // Markdown preview textarea
             const svcMd = generateMarkdownTable(services)
@@ -476,7 +490,7 @@ function init(): void {
             if (mdParts.length > 0) {
               const combinedMd = mdParts.join('\n\n')
               const mdLabel = el('label')
-              mdLabel.textContent = 'Markdown (for pasting into Discord / GitHub):'
+              mdLabel.textContent = 'Markdown preview (GitHub format) — use the buttons above to copy GitHub or Discord variants:'
               mdLabel.style.marginTop = '0.75rem'
               volumesContainer.appendChild(mdLabel)
               const mdPreview = el('textarea', {
