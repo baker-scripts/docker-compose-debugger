@@ -43,7 +43,10 @@ jobs:
       - name: Update package.json version
         env:
           VERSION: ${{ inputs.version }}
-        run: npm version "$VERSION" --no-git-tag-version
+        # `npm version` errors when the requested version equals the current
+        # (which happens when the version was bumped in a PR before the
+        # release workflow runs). `npm pkg set` is idempotent.
+        run: npm pkg set "version=$VERSION"
 
       - run: npm ci
       - run: npx tsc --noEmit
@@ -58,7 +61,14 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add package.json package-lock.json
-          git commit -m "chore: release v${VERSION}"
+          # If the version was already bumped in a PR (so package.json/lock
+          # are unchanged here) skip the commit. The tag and push still need
+          # to run.
+          if ! git diff --cached --quiet; then
+            git commit -m "chore: release v${VERSION}"
+          else
+            echo "package.json already at v${VERSION}; skipping bump commit"
+          fi
           git tag "v${VERSION}"
           git push origin main --follow-tags
 
