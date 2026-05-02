@@ -62,9 +62,18 @@ jobs:
           git tag "v${VERSION}"
           git push origin main --follow-tags
 
+      # Immutable releases require draft-first so assets can be attached
+      # before the release is locked.
       - uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ inputs.version }}
           files: docker-compose-debugger.html
           generate_release_notes: true
           prerelease: false
+          draft: true
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: v${{ inputs.version }}
+        run: gh release edit "$TAG" --repo "${{ github.repository }}" --draft=false

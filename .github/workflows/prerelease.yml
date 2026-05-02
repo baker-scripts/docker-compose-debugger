@@ -65,9 +65,20 @@ jobs:
           git tag "$TAG"
           git push origin "$TAG"
 
+      # The repo has immutable releases enabled. softprops/action-gh-release
+      # creates and publishes in one step, which means the asset upload races
+      # against the immutable lockdown and fails. Create as draft, upload the
+      # asset, then publish in a follow-up step.
       - uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.prerelease.outputs.tag }}
           files: docker-compose-debugger.html
           generate_release_notes: true
           prerelease: true
+          draft: true
+
+      - name: Publish pre-release
+        env:
+          TAG: ${{ steps.prerelease.outputs.tag }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release edit "$TAG" --repo "${{ github.repository }}" --draft=false
