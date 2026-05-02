@@ -73,6 +73,28 @@ describe('isSensitiveKey', () => {
     expect(isSensitiveKey('DATABASE_URL_FILE')).toBe(true)
     expect(isSensitiveKey('PUID_FILE')).toBe(false)
   })
+
+  // Issue #10 (TRaSH): chat-platform IDs leak who/where you are.
+  it.each([
+    ['GUILD_ID', true],
+    ['DISCORD_GUILD_ID', true],
+    ['DISCORD_CHANNEL_ID', true],
+    ['SLACK_WORKSPACE_ID', true],
+    ['DISCORD_BOT_TOKEN', true],
+    ['SLACK_TOKEN', true],
+    ['DISCORD_APPLICATION_ID', true],
+    ['BOT_ID', true],
+    ['DISCORD_USER_ID', true],
+  ])('catches chat-platform identifiers: %s', (key, expected) => {
+    expect(isSensitiveKey(key)).toBe(expected)
+  })
+
+  it('does not over-match bare ID-suffixed keys that are not chat platforms', () => {
+    expect(isSensitiveKey('CONTAINER_ID')).toBe(false)
+    expect(isSensitiveKey('IMAGE_ID')).toBe(false)
+    expect(isSensitiveKey('USER_ID')).toBe(false)
+    expect(isSensitiveKey('PROCESS_ID')).toBe(false)
+  })
 })
 
 describe('containsSensitiveValue', () => {

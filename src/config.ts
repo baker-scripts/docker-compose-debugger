@@ -25,6 +25,8 @@ export const DEFAULT_CONFIG: SanitizerConfig = {
     'webhook',
     'pat$',
     '^gh[_\\-.]?(token|pat)',
+    '^(discord|slack|telegram|matrix|teams)[_\\-.]',
+    '\\b(guild|channel|server|workspace|tenant|application|bot|client)[_\\-.]?id$',
   ],
   safeKeys: [
     'PUID', 'PGID', 'TZ', 'UMASK', 'UMASK_SET',

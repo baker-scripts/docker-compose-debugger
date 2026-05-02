@@ -23,6 +23,11 @@ export const DEFAULT_SENSITIVE_PATTERNS: readonly RegExp[] = [
   /webhook/i,
   /pat$/i,
   /^gh[_\-.]?(token|pat)/i,
+  // Discord / Slack / generic chat-platform identifiers. Snowflake IDs and
+  // channel/guild identifiers leak who the user is and which servers they
+  // are in; treat them as sensitive. (Issue #10, requested by TRaSH.)
+  /^(discord|slack|telegram|matrix|teams)[_\-.]/i,
+  /\b(guild|channel|server|workspace|tenant|application|bot|client)[_\-.]?id$/i,
 ]
 
 export const DEFAULT_SAFE_KEYS: ReadonlySet<string> = new Set([
@@ -41,8 +46,10 @@ export const HOME_DIR_PATTERN = /^(\/home\/[^/]+|~|\/root)\//
 export const SENSITIVE_VALUE_PATTERNS: readonly RegExp[] = [
   // Basic-auth credentials embedded in any URL (scheme then user:pass@host).
   /[a-z][a-z0-9+\-.]{1,20}:\/\/[^\s/@:]{1,200}:[^\s/@]{1,200}@/i,  // pragma: allowlist secret
-  // GitHub fine-grained / classic PATs: ghp_, gho_, ghu_, ghs_, ghr_
+  // GitHub classic PATs: ghp_, gho_, ghu_, ghs_, ghr_
   /\bgh[pousr]_[A-Za-z0-9]{30,}\b/,
+  // GitHub fine-grained PATs: github_pat_<base62/underscore>
+  /\bgithub_pat_[A-Za-z0-9_]{60,}\b/,
   // AWS access key IDs (AKIA, ASIA, AROA, AIPA, AGPA, AIDA prefixes)
   /\b(?:AKIA|ASIA|AROA|AIPA|AGPA|AIDA)[A-Z0-9]{16}\b/,
   // Tailscale auth keys
