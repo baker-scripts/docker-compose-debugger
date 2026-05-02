@@ -6,6 +6,50 @@ export interface ExtractResult {
   readonly error: string | null
 }
 
+const HTML_ENTITY_PATTERN = /&(amp|lt|gt|quot|#39|apos|nbsp|#x?[0-9a-f]+);/i
+const PERCENT_ENCODED_PATTERN = /%[0-9a-fA-F]{2}/
+
+// When users paste from a rendered HTML page (forum thread, wiki, GitHub diff
+// preview, autocompose web demo), the input arrives with HTML entities and/or
+// percent-encoded sequences instead of literal characters. YAML will reject
+// these. Decode them up front so the rest of the pipeline sees plain text.
+function decodeHtmlEntities(input: string): string {
+  if (typeof document === 'undefined') return input
+  // The textarea innerHTML trick handles named entities (&amp;), decimal
+  // (&#34;), and hex (&#x22;) without exposing us to script injection — the
+  // value is read back as text, never inserted into the live DOM.
+  const ta = document.createElement('textarea')
+  ta.innerHTML = input
+  return ta.value
+}
+
+function decodePercentEncoding(input: string): string {
+  // decodeURIComponent throws on malformed sequences (e.g. lone %). Decode
+  // each match individually so a single bad sequence doesn't drop the whole
+  // input.
+  return input.replace(/%[0-9a-fA-F]{2}/g, match => {
+    try {
+      return decodeURIComponent(match)
+    } catch {
+      return match
+    }
+  })
+}
+
+export function normalizeEncodedInput(raw: string): string {
+  let out = raw
+  if (HTML_ENTITY_PATTERN.test(out)) {
+    out = decodeHtmlEntities(out)
+  }
+  // Only apply percent-decoding when there are at least two encoded sequences
+  // so a stray "%2" or "%20" inside a literal string doesn't get mangled.
+  const matches = out.match(/%[0-9a-fA-F]{2}/g)
+  if (matches && matches.length >= 2 && PERCENT_ENCODED_PATTERN.test(out)) {
+    out = decodePercentEncoding(out)
+  }
+  return out
+}
+
 const YAML_START_KEYS = /^(version|services|name|networks|volumes|x-)[\s:]/
 
 const SHELL_PREFIX = /^[$#>]\s|^(sudo\s|docker\s|podman\s)/
@@ -36,7 +80,8 @@ function trimTrailingPrompt(lines: readonly string[]): readonly string[] {
 }
 
 export function extractYaml(raw: string): ExtractResult {
-  const trimmed = raw.trim()
+  const decoded = normalizeEncodedInput(raw)
+  const trimmed = decoded.trim()
   if (trimmed === '') {
     return { yaml: null, error: 'No input provided. Paste your Docker Compose YAML or console output.' }
   }
