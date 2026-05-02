@@ -3,6 +3,18 @@ name: Pre-release
 on:
   push:
     branches: [main]
+    # Skip pre-release for changes that don't affect the built artifact.
+    paths-ignore:
+      - '**.md'
+      - '.github/dependabot.yml'
+      - '.github/ISSUE_TEMPLATE/**'
+      - '.github/PULL_REQUEST_TEMPLATE/**'
+      - '.coderabbit.yaml'
+      - '.gitleaks.toml'
+      - '.pre-commit-config.yaml'
+      - '.yamllint.yml'
+      - '.gitignore'
+      - 'LICENSE'
 
 permissions:
   contents: write

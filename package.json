@@ -1,6 +1,6 @@
 {
   "name": "docker-compose-debugger",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Browser-based Docker Compose debugger — redacts secrets, shows service cards, and generates markdown tables for support channels",
   "type": "module",
   "scripts": {

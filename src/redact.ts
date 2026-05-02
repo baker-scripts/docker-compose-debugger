@@ -1,5 +1,5 @@
 import { load, dump } from 'js-yaml'
-import { isRecord, isSensitiveKey, containsEmail, anonymizeHomePath } from './patterns'
+import { anonymizeHomePath, containsEmail, containsSensitiveValue, isRecord, isSensitiveKey } from './patterns'
 
 const REDACTED = '**REDACTED**'
 
@@ -35,6 +35,10 @@ function redactEnvDict(
         stats.redactedEnvVars++
         stats.redactedKeys.push(key)
       }
+    } else if (containsSensitiveValue(strValue)) {
+      result[key] = REDACTED
+      stats.redactedEnvVars++
+      stats.redactedKeys.push(key)
     } else if (containsEmail(strValue)) {
       result[key] = REDACTED
       stats.redactedEmails++
@@ -60,6 +64,11 @@ function redactEnvArray(
     const value = str.slice(eqIdx + 1)
 
     if (isSensitiveKey(key, config.sensitivePatterns, config.safeKeys)) {
+      stats.redactedEnvVars++
+      stats.redactedKeys.push(key)
+      return `${key}=${REDACTED}`
+    }
+    if (containsSensitiveValue(value)) {
       stats.redactedEnvVars++
       stats.redactedKeys.push(key)
       return `${key}=${REDACTED}`

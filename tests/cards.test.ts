@@ -14,6 +14,7 @@ function makeService(overrides: Partial<ServiceInfo> & { name: string }): Servic
     networks: [],
     environment: new Map(),
     extras: new Map(),
+    userGroup: { user: '', puid: '', pgid: '', groupAdd: [], umask: '' },
     ...overrides,
   }
 }

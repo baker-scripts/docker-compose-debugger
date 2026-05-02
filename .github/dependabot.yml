@@ -1,4 +1,3 @@
----
 version: 2
 updates:
   - package-ecosystem: github-actions
@@ -6,27 +5,42 @@ updates:
     schedule:
       interval: weekly
       day: monday
+    open-pull-requests-limit: 10
     commit-message:
-      prefix: "ci"
+      prefix: ci
     groups:
       github-actions:
-        patterns:
-          - "*"
+        patterns: ["*"]
     labels:
       - dependencies
       - github-actions
+
   - package-ecosystem: npm
     directory: /
     schedule:
       interval: weekly
       day: monday
+    open-pull-requests-limit: 10
     commit-message:
-      prefix: "chore"
+      prefix: chore
+      prefix-development: chore
+      include: scope
     groups:
-      npm-minor-patch:
-        update-types:
-          - minor
-          - patch
+      # Dev-only minor/patch — auto-merge candidates (vitest, typescript,
+      # vite plugins). One PR keeps churn down.
+      dev-deps-minor:
+        dependency-type: development
+        update-types: [minor, patch]
+      # Runtime minor/patch — small surface (js-yaml only) but still group.
+      prod-deps-minor:
+        dependency-type: production
+        update-types: [minor, patch]
+      # All majors get their own PR per package — no grouping — so the
+      # human review queue can evaluate them individually.
     labels:
       - dependencies
       - npm
+    ignore:
+      # Stay on a stable Node major; bump deliberately, not via dependabot.
+      - dependency-name: "@types/node"
+        update-types: [version-update:semver-major]

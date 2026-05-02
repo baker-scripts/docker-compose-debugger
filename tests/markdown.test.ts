@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest'
-import { generateMarkdownTable, generateVolumeComparisonMarkdown } from '../src/markdown'
+import {
+  buildCombinedMarkdown,
+  formatForDiscord,
+  formatForGitHub,
+  generateMarkdownTable,
+  generateVolumeComparisonMarkdown,
+} from '../src/markdown'
 import type { ServiceInfo, NetworkInfo } from '../src/services'
 
 function net(name: string, opts?: { aliases?: string[]; ipv4Address?: string }): NetworkInfo {
@@ -14,6 +20,7 @@ function makeService(overrides: Partial<ServiceInfo> & { name: string }): Servic
     networks: [],
     environment: new Map(),
     extras: new Map(),
+    userGroup: { user: '', puid: '', pgid: '', groupAdd: [], umask: '' },
     ...overrides,
   }
 }
@@ -184,5 +191,102 @@ describe('generateVolumeComparisonMarkdown', () => {
     ]
     const result = generateVolumeComparisonMarkdown(services)
     expect(result).toContain('/a\\|b')
+  })
+})
+
+describe('formatForGitHub', () => {
+  it('returns empty string when no services', () => {
+    expect(formatForGitHub(buildCombinedMarkdown([]))).toBe('')
+  })
+
+  it('renders headings as ### and bare markdown tables', () => {
+    const services = [
+      makeService({ name: 'app', image: 'nginx', volumes: ['/data:/data'] }),
+    ]
+    const result = formatForGitHub(buildCombinedMarkdown(services))
+    expect(result).toMatch(/^### Services\n\n\| Service \|/)
+    expect(result).toContain('### Volume Comparison')
+    expect(result).not.toContain('```')
+  })
+
+  it('omits a section when its source table is empty', () => {
+    const services = [makeService({ name: 'app', image: 'nginx' })] // no volumes
+    const result = formatForGitHub(buildCombinedMarkdown(services))
+    expect(result).toContain('### Services')
+    expect(result).not.toContain('### Volume Comparison')
+  })
+
+  it('includes User / Group section when userGroup data is present', () => {
+    const services = [
+      makeService({
+        name: 'app',
+        image: 'nginx',
+        userGroup: { user: '1000:1000', puid: '1000', pgid: '1000', groupAdd: ['video'], umask: '022' },
+      }),
+    ]
+    const result = formatForGitHub(buildCombinedMarkdown(services))
+    expect(result).toContain('### User / Group')
+    expect(result).toContain('| User / Group | app |')
+    expect(result).toContain('| user: | 1000:1000 |')
+    expect(result).toContain('| PUID | 1000 |')
+    expect(result).toContain('| group_add | video |')
+    expect(result).toContain('| UMASK | 022 |')
+  })
+})
+
+describe('formatForDiscord', () => {
+  it('returns empty string when no services', () => {
+    expect(formatForDiscord(buildCombinedMarkdown([]))).toBe('')
+  })
+
+  it('wraps each table in a fenced code block', () => {
+    const services = [
+      makeService({ name: 'app', image: 'nginx', volumes: ['/data:/data'] }),
+    ]
+    const result = formatForDiscord(buildCombinedMarkdown(services))
+    // fenced blocks open and close on their own lines
+    expect(result).toContain('**Services**\n```\n')
+    expect(result).toContain('\n```')
+    expect(result).toContain('**Volume Comparison**\n```\n')
+    // exactly two opening fences (services + volume) and two closing fences
+    const fences = (result.match(/```/g) ?? []).length
+    expect(fences).toBe(4)
+  })
+
+  it('uses bold labels not ### so old Discord clients render', () => {
+    const services = [makeService({ name: 'app', image: 'nginx' })]
+    const result = formatForDiscord(buildCombinedMarkdown(services))
+    expect(result).not.toContain('### ')
+    expect(result).toContain('**Services**')
+  })
+
+  it('preserves the raw pipe-table content inside the fences', () => {
+    const services = [makeService({ name: 'app', image: 'nginx' })]
+    const result = formatForDiscord(buildCombinedMarkdown(services))
+    expect(result).toContain('| Service | Image |')
+    expect(result).toContain('| app | nginx |')
+  })
+
+  it('omits a section when its source table is empty', () => {
+    const services = [makeService({ name: 'app', image: 'nginx' })] // no volumes
+    const result = formatForDiscord(buildCombinedMarkdown(services))
+    expect(result).toContain('**Services**')
+    expect(result).not.toContain('**Volume Comparison**')
+  })
+
+  it('includes User / Group section wrapped in fenced code', () => {
+    const services = [
+      makeService({
+        name: 'app',
+        image: 'nginx',
+        userGroup: { user: '1000:1000', puid: '', pgid: '', groupAdd: [], umask: '' },
+      }),
+    ]
+    const result = formatForDiscord(buildCombinedMarkdown(services))
+    expect(result).toContain('**User / Group**\n```\n')
+    expect(result).toContain('| user: | 1000:1000 |')
+    // Three sections expected: Services + User/Group (volumes omitted, no volumes data)
+    const fences = (result.match(/```/g) ?? []).length
+    expect(fences).toBe(4)
   })
 })

@@ -6,6 +6,14 @@ export interface NetworkInfo {
   readonly ipv4Address: string
 }
 
+export interface UserGroupInfo {
+  readonly user: string         // explicit user: directive (UID[:GID]) or empty
+  readonly puid: string          // PUID env value or empty
+  readonly pgid: string          // PGID env value or empty
+  readonly groupAdd: readonly string[]  // group_add entries
+  readonly umask: string         // UMASK env value or empty
+}
+
 export interface ServiceInfo {
   readonly name: string
   readonly image: string
@@ -14,6 +22,7 @@ export interface ServiceInfo {
   readonly networks: readonly NetworkInfo[]
   readonly environment: ReadonlyMap<string, string>
   readonly extras: ReadonlyMap<string, string>
+  readonly userGroup: UserGroupInfo
 }
 
 function normalizePort(entry: unknown): string {
@@ -109,8 +118,66 @@ function formatResourceLimits(resources: Record<string, unknown>): string {
   return parts.join('; ')
 }
 
-function extractExtras(service: Record<string, unknown>): ReadonlyMap<string, string> {
+// Linuxserver env conventions are uppercase, but we look up case-insensitively
+// so a typo'd `Puid` or `pgid` still surfaces in the User/Group comparison.
+function envLookupCI(env: ReadonlyMap<string, string>, name: string): string {
+  const direct = env.get(name)
+  if (direct !== undefined) return direct.trim()
+  const upper = name.toUpperCase()
+  for (const [k, v] of env) {
+    if (k.toUpperCase() === upper) return v.trim()
+  }
+  return ''
+}
+
+// Compose accepts user as either a quoted string ("1000:1000") or a bare YAML
+// scalar (1000). js-yaml parses the bare form to a number, so coerce both.
+function readUserDirective(service: Record<string, unknown>): string {
+  const v = service['user']
+  if (typeof v === 'string') return v.trim()
+  if (typeof v === 'number') return String(v)
+  return ''
+}
+
+function extractUserGroup(service: Record<string, unknown>, env: ReadonlyMap<string, string>): UserGroupInfo {
+  const groupAddRaw = service['group_add']
+  const groupAdd = Array.isArray(groupAddRaw) ? groupAddRaw.map(String) : []
+  return {
+    user: readUserDirective(service),
+    puid: envLookupCI(env, 'PUID'),
+    pgid: envLookupCI(env, 'PGID'),
+    groupAdd,
+    umask: envLookupCI(env, 'UMASK'),
+  }
+}
+
+function deriveUser(service: Record<string, unknown>, env: ReadonlyMap<string, string>): string {
+  const directive = readUserDirective(service)
+  const puid = envLookupCI(env, 'PUID')
+  const pgid = envLookupCI(env, 'PGID')
+
+  // Prefer the explicit user: directive (it takes effect at runtime; PUID/PGID
+  // are linuxserver convention only).
+  if (directive && (puid || pgid)) {
+    const envPart = puid && pgid ? `PUID=${puid} PGID=${pgid}` : puid ? `PUID=${puid}` : `PGID=${pgid}`
+    // If directive matches PUID:PGID, surface a single value.
+    if (directive === `${puid}:${pgid}`) return directive
+    return `${directive} (${envPart})`
+  }
+  if (directive) return directive
+  if (puid && pgid) return `${puid}:${pgid}`
+  if (puid) return `PUID=${puid}`
+  if (pgid) return `PGID=${pgid}`
+  return ''
+}
+
+function extractExtras(service: Record<string, unknown>, env: ReadonlyMap<string, string>): ReadonlyMap<string, string> {
   const extras = new Map<string, string>()
+
+  const userField = deriveUser(service, env)
+  if (userField) {
+    extras.set('user', userField)
+  }
 
   const simpleKeys = ['restart', 'hostname', 'container_name'] as const
   for (const key of simpleKeys) {
@@ -142,14 +209,16 @@ function extractExtras(service: Record<string, unknown>): ReadonlyMap<string, st
 }
 
 function parseService(name: string, service: Record<string, unknown>): ServiceInfo {
+  const environment = extractEnvironment(service['environment'])
   return {
     name,
     image: typeof service['image'] === 'string' ? service['image'] : '',
     ports: normalizePorts(service['ports']),
     volumes: normalizeVolumes(service['volumes']),
     networks: extractNetworks(service['networks']),
-    environment: extractEnvironment(service['environment']),
-    extras: extractExtras(service),
+    environment,
+    extras: extractExtras(service, environment),
+    userGroup: extractUserGroup(service, environment),
   }
 }
 
