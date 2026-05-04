@@ -133,3 +133,4 @@ This tool is provided as-is with no warranty. While all processing happens clien
 ## License
 
 MIT
+
