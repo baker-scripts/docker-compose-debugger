@@ -58,12 +58,6 @@ jobs:
       - run: npm run build
       - run: cp dist/index.html docker-compose-debugger.html
 
-      - name: Create pre-release tag
-        env:
-          TAG: ${{ steps.prerelease.outputs.tag }}
-        run: |
-          git tag "$TAG"
-          git push origin "$TAG"
 
       # The repo has immutable releases enabled. softprops/action-gh-release
       # creates and publishes in one step, which means the asset upload races
