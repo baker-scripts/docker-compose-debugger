@@ -42,14 +42,21 @@ jobs:
         id: prerelease
         env:
           BASE_VERSION: ${{ steps.version.outputs.version }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
         run: |
-          LATEST=$(git tag -l "v${BASE_VERSION}-pre.*" --sort=-version:refname | head -n1)
+          # Derive the next number from existing RELEASES (incl. drafts + already
+          # published immutable releases), NOT git tags. Under immutable releases a
+          # pre-release tag can be permanently reserved in the release ledger while
+          # never materializing as a git ref, so git-tag-based numbering collides on
+          # the same number every run. The releases list always reflects burned tags.
+          LATEST=$(gh api "repos/${REPO}/releases" --paginate \
+            --jq ".[].tag_name | select(startswith(\"v${BASE_VERSION}-pre.\"))" \
+            | sed "s|^v${BASE_VERSION}-pre.||" | sort -n | tail -n1)
           if [ -z "$LATEST" ]; then
             NUM=1
           else
-            PREFIX="v${BASE_VERSION}-pre."
-            NUM="${LATEST#"$PREFIX"}"
-            NUM=$((NUM + 1))
+            NUM=$((LATEST + 1))
           fi
           TAG="v${BASE_VERSION}-pre.${NUM}"
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
