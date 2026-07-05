@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { extractYaml } from '../src/extract'
+import { extractYaml, normalizeEncodedInput } from '../src/extract'
 
 describe('extractYaml', () => {
   it('returns pure YAML as-is', () => {
@@ -85,5 +85,67 @@ describe('extractYaml', () => {
     const result = extractYaml(input)
     expect(result.yaml).toContain('services:')
     expect(result.error).toBeNull()
+  })
+
+  it('decodes common HTML entities in pasted input', () => {
+    const input =
+      'services:\n  app:\n    image: nginx\n    environment:\n      - FOO=&quot;bar&quot;\n      - BAZ=a&amp;b\n'
+    const result = extractYaml(input)
+    expect(result.error).toBeNull()
+    expect(result.yaml).toContain('FOO="bar"')
+    expect(result.yaml).toContain('BAZ=a&b')
+  })
+
+  it('decodes percent-encoded paths in pasted input', () => {
+    const input =
+      'services:\n  app:\n    image: nginx\n    volumes:\n      - /mnt/My%20Files:/data\n      - /opt/foo%2Fbar:/x\n'
+    const result = extractYaml(input)
+    expect(result.error).toBeNull()
+    expect(result.yaml).toContain('/mnt/My Files:/data')
+    expect(result.yaml).toContain('/opt/foo/bar:/x')
+  })
+
+  it('leaves a single literal % alone (not a misread encoding)', () => {
+    const input = 'services:\n  app:\n    image: nginx\n    environment:\n      - GREET=hi 100% done\n'
+    const result = extractYaml(input)
+    expect(result.error).toBeNull()
+    expect(result.yaml).toContain('100% done')
+  })
+})
+
+describe('normalizeEncodedInput', () => {
+  it('passes plain text through unchanged', () => {
+    expect(normalizeEncodedInput('plain text')).toBe('plain text')
+  })
+
+  it('decodes named HTML entities', () => {
+    expect(normalizeEncodedInput('a &amp; b &lt; c')).toBe('a & b < c')
+  })
+
+  it('decodes numeric HTML entities', () => {
+    expect(normalizeEncodedInput('&#34;quote&#34;')).toBe('"quote"')
+  })
+
+  it('decodes hex HTML entities', () => {
+    expect(normalizeEncodedInput('&#x22;quote&#x22;')).toBe('"quote"')
+  })
+
+  it('decodes multiple percent sequences together', () => {
+    expect(normalizeEncodedInput('/path/with%20spaces/and%2Fslashes')).toBe('/path/with spaces/and/slashes')
+  })
+
+  it('leaves a lone % sign alone', () => {
+    // Only one %-sequence and the test is conservative — keep literal.
+    expect(normalizeEncodedInput('battery 100% full')).toBe('battery 100% full')
+  })
+
+  it('handles malformed percent sequences gracefully', () => {
+    // %ZZ is not valid hex; should be left as-is rather than throwing.
+    expect(() => normalizeEncodedInput('value with %ZZ and %20 here %2F')).not.toThrow()
+  })
+
+  it('handles mixed HTML and percent encoding', () => {
+    expect(normalizeEncodedInput('foo &amp; /a%20b')).toBe('foo & /a%20b') // percent stays — only one %20
+    expect(normalizeEncodedInput('foo &amp; /a%20b/c%20d')).toBe('foo & /a b/c d') // two %20 → decoded
   })
 })

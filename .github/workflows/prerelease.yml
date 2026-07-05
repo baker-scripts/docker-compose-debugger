@@ -3,6 +3,18 @@ name: Pre-release
 on:
   push:
     branches: [main]
+    # Skip pre-release for changes that don't affect the built artifact.
+    paths-ignore:
+      - '**.md'
+      - '.github/dependabot.yml'
+      - '.github/ISSUE_TEMPLATE/**'
+      - '.github/PULL_REQUEST_TEMPLATE/**'
+      - '.coderabbit.yaml'
+      - '.gitleaks.toml'
+      - '.pre-commit-config.yaml'
+      - '.yamllint.yml'
+      - '.gitignore'
+      - 'LICENSE'
 
 permissions:
   contents: write
@@ -10,13 +22,14 @@ permissions:
 jobs:
   prerelease:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
-          node-version: 22.22.0
+          node-version: 24.14.0
           cache: npm
 
       - name: Get current version
@@ -29,31 +42,44 @@ jobs:
         id: prerelease
         env:
           BASE_VERSION: ${{ steps.version.outputs.version }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
         run: |
-          LATEST=$(git tag -l "v${BASE_VERSION}-pre.*" --sort=-version:refname | head -n1)
+          # Derive the next number from existing RELEASES (incl. drafts + already
+          # published immutable releases), NOT git tags. Under immutable releases a
+          # pre-release tag can be permanently reserved in the release ledger while
+          # never materializing as a git ref, so git-tag-based numbering collides on
+          # the same number every run. The releases list always reflects burned tags.
+          LATEST=$(gh api "repos/${REPO}/releases" --paginate \
+            --jq ".[].tag_name | select(startswith(\"v${BASE_VERSION}-pre.\"))" \
+            | sed "s|^v${BASE_VERSION}-pre.||" | sort -n | tail -n1)
           if [ -z "$LATEST" ]; then
             NUM=1
           else
-            NUM=$(echo "$LATEST" | sed "s/v${BASE_VERSION}-pre\.\([0-9]*\)/\1/")
-            NUM=$((NUM + 1))
+            NUM=$((LATEST + 1))
           fi
           TAG="v${BASE_VERSION}-pre.${NUM}"
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
 
       - run: npm ci
       - run: npm run build
-      - run: cp dist/index.html compose-sanitizer.html
+      - run: cp dist/index.html docker-compose-debugger.html
 
-      - name: Create pre-release tag
-        env:
-          TAG: ${{ steps.prerelease.outputs.tag }}
-        run: |
-          git tag "$TAG"
-          git push origin "$TAG"
 
+      # The repo has immutable releases enabled. softprops/action-gh-release
+      # creates and publishes in one step, which means the asset upload races
+      # against the immutable lockdown and fails. Create as draft, upload the
+      # asset, then publish in a follow-up step.
       - uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.prerelease.outputs.tag }}
-          files: compose-sanitizer.html
+          files: docker-compose-debugger.html
           generate_release_notes: true
           prerelease: true
+          draft: true
+
+      - name: Publish pre-release
+        env:
+          TAG: ${{ steps.prerelease.outputs.tag }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release edit "$TAG" --repo "${{ github.repository }}" --draft=false

@@ -5,13 +5,13 @@ import { redactCompose } from './redact'
 import { stripNoise } from './noise'
 import { detectAdvisories, type Advisory } from './advisories'
 import { loadConfig, saveConfig, resetConfig, compileConfig, type SanitizerConfig } from './config'
-import { copyToClipboard, openPrivateBin, openGist } from './clipboard'
+import { copyToClipboard } from './clipboard'
 import { createShortNotice, createPiiWarning, createFullDisclaimer } from './disclaimer'
 import { el } from './dom'
 import { parseServices } from './services'
-import { generateMarkdownTable, generateVolumeComparisonMarkdown } from './markdown'
+import { buildCombinedMarkdown, formatForDiscord, formatForGitHub } from './markdown'
 import { renderCards } from './cards'
-import { renderServiceTable, renderVolumeTable } from './volume-table'
+import { renderServiceTable, renderUserGroupTable, renderVolumeTable } from './volume-table'
 
 const MAX_INPUT_BYTES = 512 * 1024
 
@@ -19,10 +19,10 @@ function sanitize(raw: string, config: SanitizerConfig): {
   output: string | null
   parsed: Record<string, unknown> | null
   error: string | null
-  stats: { redactedEnvVars: number; redactedEmails: number; anonymizedPaths: number }
+  stats: { redactedEnvVars: number; redactedEmails: number; anonymizedPaths: number; redactedKeys: readonly string[] }
   advisories: readonly Advisory[]
 } {
-  const emptyStats = { redactedEnvVars: 0, redactedEmails: 0, anonymizedPaths: 0 }
+  const emptyStats = { redactedEnvVars: 0, redactedEmails: 0, anonymizedPaths: 0, redactedKeys: [] as string[] }
 
   const extracted = extractYaml(raw)
   if (extracted.error !== null || extracted.yaml === null) {
@@ -78,9 +78,12 @@ function renderAdvisories(advisories: readonly Advisory[]): HTMLElement {
   return container
 }
 
-function renderStats(stats: { redactedEnvVars: number; redactedEmails: number; anonymizedPaths: number }): string {
+function renderStats(stats: { redactedEnvVars: number; redactedEmails: number; anonymizedPaths: number; redactedKeys: readonly string[] }): string {
   const parts: string[] = []
-  if (stats.redactedEnvVars > 0) parts.push(`${stats.redactedEnvVars} env var${stats.redactedEnvVars > 1 ? 's' : ''} redacted`)
+  if (stats.redactedEnvVars > 0) {
+    const keyList = stats.redactedKeys.length > 0 ? ` (${[...new Set(stats.redactedKeys)].join(', ')})` : ''
+    parts.push(`${stats.redactedEnvVars} env var${stats.redactedEnvVars > 1 ? 's' : ''} redacted${keyList}`)
+  }
   if (stats.redactedEmails > 0) parts.push(`${stats.redactedEmails} email${stats.redactedEmails > 1 ? 's' : ''} redacted`)
   if (stats.anonymizedPaths > 0) parts.push(`${stats.anonymizedPaths} path${stats.anonymizedPaths > 1 ? 's' : ''} anonymized`)
   return parts.length > 0 ? parts.join(', ') : 'No sensitive values detected'
@@ -148,12 +151,83 @@ function init(): void {
   // Header
   const header = el('header')
   const h1 = el('h1')
-  h1.textContent = 'Compose Debugger'
+  h1.textContent = 'Docker Compose Debugger'
   header.appendChild(h1)
+  const subtitle = el('p')
+  subtitle.textContent = 'Paste your Docker Compose output to get a clean, readable breakdown — sensitive values redacted, noise stripped, misconfigurations flagged.'
+  subtitle.style.color = 'var(--text-muted)'
+  subtitle.style.fontSize = '0.9rem'
+  subtitle.style.marginTop = '0.25rem'
+  header.appendChild(subtitle)
   app.appendChild(header)
 
   // Short notice
   app.appendChild(createShortNotice())
+
+  // Help commands (copyable)
+  const helpBox = el('div', { className: 'notice' })
+  helpBox.style.whiteSpace = 'normal'
+  const helpIntro = el('p')
+  helpIntro.textContent = 'Run one of these commands, then paste the output below:'
+  helpIntro.style.marginBottom = '0.5rem'
+  helpIntro.style.fontWeight = '500'
+  helpIntro.style.color = 'var(--text)'
+  helpBox.appendChild(helpIntro)
+
+  const commands = [
+    { label: 'docker-autocompose (recommended)', cmd: 'docker run --rm -v /var/run/docker.sock:/var/run/docker.sock ghcr.io/red5d/docker-autocompose <container_name>' },
+  ]
+  for (const { label, cmd } of commands) {
+    const row = el('div')
+    row.style.marginBottom = '0.4rem'
+    const labelSpan = el('span')
+    labelSpan.textContent = label + ':'
+    labelSpan.style.fontSize = '0.8rem'
+    labelSpan.style.color = 'var(--text-muted)'
+    labelSpan.style.display = 'block'
+    row.appendChild(labelSpan)
+
+    const cmdWrap = el('div')
+    cmdWrap.style.display = 'flex'
+    cmdWrap.style.alignItems = 'center'
+    cmdWrap.style.gap = '0.5rem'
+
+    const code = el('code')
+    code.textContent = cmd
+    code.style.fontFamily = 'var(--mono)'
+    code.style.fontSize = '0.8rem'
+    code.style.background = 'var(--bg)'
+    code.style.padding = '0.3rem 0.5rem'
+    code.style.borderRadius = '4px'
+    code.style.display = 'block'
+    code.style.overflowX = 'auto'
+    code.style.userSelect = 'all'
+    code.style.cursor = 'pointer'
+    cmdWrap.appendChild(code)
+
+    const copyBtn = el('button', { className: 'btn btn-secondary' })
+    copyBtn.textContent = 'Copy'
+    copyBtn.style.padding = '0.2rem 0.5rem'
+    copyBtn.style.fontSize = '0.75rem'
+    copyBtn.style.flexShrink = '0'
+    copyBtn.addEventListener('click', async () => {
+      const ok = await copyToClipboard(cmd)
+      copyBtn.textContent = ok ? 'Copied!' : 'Failed'
+      setTimeout(() => { copyBtn.textContent = 'Copy' }, 1500)
+    })
+    cmdWrap.appendChild(copyBtn)
+
+    row.appendChild(cmdWrap)
+    helpBox.appendChild(row)
+  }
+
+  const helpNote = el('p')
+  helpNote.textContent = 'You can also paste raw docker-compose.yml content directly.'
+  helpNote.style.marginTop = '0.4rem'
+  helpNote.style.fontSize = '0.8rem'
+  helpNote.style.color = 'var(--text-muted)'
+  helpBox.appendChild(helpNote)
+  app.appendChild(helpBox)
 
   // Input
   const inputLabel = el('label', { for: 'input' })
@@ -165,7 +239,6 @@ function init(): void {
     rows: '18',
     spellcheck: 'false',
   })
-  input.placeholder = 'Paste output from:\n  docker run --rm -v /var/run/docker.sock:/var/run/docker.sock ghcr.io/red5d/docker-autocompose <container>\n  docker compose config\n  or raw docker-compose.yml content'
   app.appendChild(input)
 
   // Sanitize button
@@ -190,20 +263,29 @@ function init(): void {
   piiWarning.classList.add('hidden')
   app.appendChild(piiWarning)
 
-  // Tab bar (hidden until output)
+  // Tab bar (hidden until output). Table is default — most users want the
+  // service overview as a quick read; YAML view is the full sanitized output.
   const tabBar = el('div', { className: 'tab-bar hidden' })
-  const yamlTab = el('button', { className: 'tab-btn active' })
-  yamlTab.textContent = 'YAML'
-  tabBar.appendChild(yamlTab)
+  const volumesTab = el('button', { className: 'tab-btn active' })
+  volumesTab.textContent = 'Table'
+  tabBar.appendChild(volumesTab)
   const cardsTab = el('button', { className: 'tab-btn' })
   cardsTab.textContent = 'Cards'
   tabBar.appendChild(cardsTab)
-  const volumesTab = el('button', { className: 'tab-btn' })
-  volumesTab.textContent = 'Table'
-  tabBar.appendChild(volumesTab)
+  const yamlTab = el('button', { className: 'tab-btn' })
+  yamlTab.textContent = 'YAML'
+  tabBar.appendChild(yamlTab)
   app.appendChild(tabBar)
 
-  // Output textarea (YAML view)
+  // Volumes container (default visible after sanitize)
+  const volumesContainer = el('div', { id: 'volumes', className: 'hidden' })
+  app.appendChild(volumesContainer)
+
+  // Cards container (hidden by default)
+  const cardsContainer = el('div', { id: 'cards', className: 'cards-container hidden' })
+  app.appendChild(cardsContainer)
+
+  // Output textarea (YAML view, hidden by default)
   const output = el('textarea', {
     id: 'output',
     className: 'code-textarea hidden',
@@ -212,14 +294,6 @@ function init(): void {
     spellcheck: 'false',
   })
   app.appendChild(output)
-
-  // Cards container (hidden by default)
-  const cardsContainer = el('div', { id: 'cards', className: 'cards-container hidden' })
-  app.appendChild(cardsContainer)
-
-  // Volumes container (hidden by default)
-  const volumesContainer = el('div', { id: 'volumes', className: 'hidden' })
-  app.appendChild(volumesContainer)
 
   // Track current parsed object for markdown generation
   let currentParsed: Record<string, unknown> | null = null
@@ -259,46 +333,51 @@ function init(): void {
   })
   actions.appendChild(copyBtn)
 
-  const mdBtn = el('button', { className: 'btn btn-secondary' })
-  mdBtn.textContent = 'Copy as Markdown'
-  mdBtn.addEventListener('click', async () => {
-    if (!currentParsed) {
-      mdBtn.textContent = 'No data'
-      setTimeout(() => { mdBtn.textContent = 'Copy as Markdown' }, 1500)
-      return
-    }
-    const services = parseServices(currentParsed)
-    const parts: string[] = []
-    const serviceTable = generateMarkdownTable(services)
-    if (serviceTable) {
-      parts.push('### Services\n\n' + serviceTable)
-    }
-    const volTable = generateVolumeComparisonMarkdown(services)
-    if (volTable) {
-      parts.push('### Volume Comparison\n\n' + volTable)
-    }
-    const md = parts.join('\n\n')
-    const ok = await copyToClipboard(md || 'No services found')
-    mdBtn.textContent = ok ? 'Copied!' : 'Copy failed'
-    setTimeout(() => { mdBtn.textContent = 'Copy as Markdown' }, 1500)
-  })
-  actions.appendChild(mdBtn)
+  function makeMarkdownButton(label: string, format: (p: ReturnType<typeof buildCombinedMarkdown>) => string): HTMLButtonElement {
+    const btn = el('button', { className: 'btn btn-secondary' })
+    btn.textContent = label
+    btn.addEventListener('click', async () => {
+      if (!currentParsed) {
+        btn.textContent = 'No data'
+        setTimeout(() => { btn.textContent = label }, 1500)
+        return
+      }
+      const services = parseServices(currentParsed)
+      const md = format(buildCombinedMarkdown(services))
+      const ok = await copyToClipboard(md || 'No services found')
+      btn.textContent = ok ? 'Copied!' : 'Copy failed'
+      setTimeout(() => { btn.textContent = label }, 1500)
+    })
+    return btn
+  }
 
-  const pbBtn = el('button', { className: 'btn btn-secondary' })
-  pbBtn.textContent = 'Open PrivateBin'
-  pbBtn.addEventListener('click', async () => {
-    await copyToClipboard(output.value)
-    openPrivateBin()
-  })
-  actions.appendChild(pbBtn)
+  actions.appendChild(makeMarkdownButton('Copy MD (GitHub)', formatForGitHub))
+  actions.appendChild(makeMarkdownButton('Copy MD (Discord)', formatForDiscord))
 
-  const gistBtn = el('button', { className: 'btn btn-secondary' })
-  gistBtn.textContent = 'Open GitHub Gist'
-  gistBtn.addEventListener('click', async () => {
-    await copyToClipboard(output.value)
-    openGist()
-  })
-  actions.appendChild(gistBtn)
+  // Open* buttons must call window.open synchronously inside the click handler
+  // before any await — otherwise Safari (and strict popup blockers) drop the
+  // user-activation token and the popup is blocked.
+  function makeOpenButton(label: string, url: string, title?: string): HTMLButtonElement {
+    const btn = el('button', { className: 'btn btn-secondary' })
+    btn.textContent = label
+    if (title) btn.setAttribute('title', title)
+    btn.addEventListener('click', () => {
+      window.open(url, '_blank', 'noopener,noreferrer')
+      copyToClipboard(output.value).then(ok => {
+        btn.textContent = ok ? 'Copied! → opened tab' : 'Tab opened (copy failed)'
+        setTimeout(() => { btn.textContent = label }, 1800)
+      })
+    })
+    return btn
+  }
+
+  actions.appendChild(makeOpenButton(
+    'Open PrivateBin',
+    'https://privatebin.net/',
+    'Tip: Set expiry to 1 week or longer so support can review it',
+  ))
+  actions.appendChild(makeOpenButton('Open logs.notifiarr.com', 'https://logs.notifiarr.com/'))
+  actions.appendChild(makeOpenButton('Open GitHub Gist', 'https://gist.github.com/'))
 
   app.appendChild(actions)
 
@@ -312,7 +391,7 @@ function init(): void {
   // Source code link
   const footer = el('div', { className: 'footer' })
   const sourceLink = el('a', {
-    href: 'https://github.com/bakerboy448/compose-sanitizer',
+    href: 'https://github.com/baker-scripts/docker-compose-debugger',
     target: '_blank',
     rel: 'noopener noreferrer',
   })
@@ -364,8 +443,8 @@ function init(): void {
         output.value = result.output ?? ''
         currentParsed = result.parsed
 
-        // Reset to YAML tab
-        switchTab(yamlTab)
+        // Reset to Table tab — best default for quick scanning
+        switchTab(volumesTab)
 
         // Render cards + volume table
         cardsContainer.replaceChildren()
@@ -382,29 +461,41 @@ function init(): void {
             const svcTable = renderServiceTable(services)
             volumesContainer.appendChild(svcTable)
 
+            // Render user/group comparison table (only if at least one service has data)
+            const ugTable = renderUserGroupTable(services)
+            if (ugTable.firstChild) {
+              const ugLabel = el('label')
+              ugLabel.textContent = 'User / Group comparison:'
+              ugLabel.style.marginTop = '0.75rem'
+              volumesContainer.appendChild(ugLabel)
+              volumesContainer.appendChild(ugTable)
+            }
+
             // Render volume comparison table
             const volTable = renderVolumeTable(services)
-            volumesContainer.appendChild(volTable)
+            if (volTable.firstChild) {
+              const volLabel = el('label')
+              volLabel.textContent = 'Volume comparison:'
+              volLabel.style.marginTop = '0.75rem'
+              volumesContainer.appendChild(volLabel)
+              volumesContainer.appendChild(volTable)
+            }
 
-            // Markdown preview textarea
-            const svcMd = generateMarkdownTable(services)
-            const volMd = generateVolumeComparisonMarkdown(services)
-            const mdParts: string[] = []
-            if (svcMd) mdParts.push(svcMd)
-            if (volMd) mdParts.push(volMd)
-            if (mdParts.length > 0) {
-              const combinedMd = mdParts.join('\n\n')
+            // Markdown preview — share the exact pipeline used by the copy
+            // buttons so what's previewed is identical to what gets copied.
+            const previewMd = formatForGitHub(buildCombinedMarkdown(services))
+            if (previewMd) {
               const mdLabel = el('label')
-              mdLabel.textContent = 'Markdown (for pasting into Discord / GitHub):'
+              mdLabel.textContent = 'Markdown preview (GitHub format) — use the buttons above to copy GitHub or Discord variants:'
               mdLabel.style.marginTop = '0.75rem'
               volumesContainer.appendChild(mdLabel)
               const mdPreview = el('textarea', {
                 className: 'code-textarea',
-                rows: String(Math.min(combinedMd.split('\n').length + 1, 18)),
+                rows: String(Math.min(previewMd.split('\n').length + 1, 18)),
                 readonly: 'true',
                 spellcheck: 'false',
               })
-              mdPreview.value = combinedMd
+              mdPreview.value = previewMd
               volumesContainer.appendChild(mdPreview)
             }
           }

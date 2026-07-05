@@ -1,28 +1,45 @@
-# Compose Debugger
+# Docker Compose Debugger
 
-Browser-based tool for parsing Docker Compose output into structured debugging views. Paste output from `docker-autocompose`, `docker compose config`, or raw `docker-compose.yml` — get sanitized YAML, per-service cards, and a markdown table ready for Discord or GitHub support channels.
+Browser-based tool that turns messy Docker Compose output into clean, readable debugging views. Paste output from `docker-autocompose`, `docker compose config`, or raw `docker-compose.yml` — get sanitized YAML with sensitive values redacted, per-service cards, volume comparison tables, and a markdown table ready for Discord or GitHub support channels.
 
-**Live:** [bakerboy448.github.io/compose-sanitizer](https://bakerboy448.github.io/compose-sanitizer/)
+**Live:** [baker-scripts.github.io/docker-compose-debugger](https://baker-scripts.github.io/docker-compose-debugger/)
 
 ## Features
 
-### Service Cards
+### Three views
 
-Parsed per-service view showing image, ports, volumes, networks, environment, and extras (restart policy, hostname, depends_on, resource limits). Empty sections are omitted. Switch between YAML and Cards views with the tab bar.
+- **Table** *(default)* — service overview + User/Group comparison + Volume comparison, all in one place. Best for quickly spotting UID/GID mismatches or which services share which host paths.
+- **Cards** — per-service view showing image, ports, volumes, networks, environment, and extras (user, restart policy, hostname, depends_on, resource limits). Empty sections are omitted.
+- **YAML** — full sanitized YAML output, ready to paste into a gist.
 
-### Markdown Table
+### Copy as Markdown — GitHub or Discord
 
-One-click "Copy as Markdown Table" generates a table with columns for Service, Image, Ports, Volumes, and Networks — paste directly into Discord or GitHub issues.
+Two dedicated buttons:
+
+- **Copy MD (GitHub)** — `### heading` + bare pipe-table markdown. Renders as a real table on GitHub.
+- **Copy MD (Discord)** — `**bold**` labels + each table wrapped in a fenced code block. Discord doesn't render pipe tables, so the fence preserves alignment in monospace and prevents `_underscore_` / `*asterisk*` characters in volume paths from triggering inline formatting.
+
+Both formats include the Services overview, User/Group comparison, and Volume comparison sections.
+
+### User / Group merging
+
+The "User" column merges three sources of identity into a single value so you can spot mismatches at a glance:
+
+- explicit `user: <UID>:<GID>` directive
+- `PUID` / `PGID` env vars (linuxserver convention)
+- `group_add` and `UMASK` in the comparison table
+
+Lookups are case-insensitive (so a typo'd `Puid` still surfaces). When the directive matches `PUID:PGID`, only one value is shown; when they conflict, the directive is shown with the env values annotated.
 
 ### Redaction
 
 | What | Example | Result |
 |------|---------|--------|
-| Sensitive env values | `RADARR__POSTGRES__HOST: db.example.com` | `RADARR__POSTGRES__HOST: **REDACTED**` |
+| Sensitive env keys | `MYSQL_PASSWORD`, `API_KEY`, `DATABASE_URL`, `AWS_SECRET_ACCESS_KEY`, `*_FILE` variants | value replaced with `**REDACTED**` |
+| Inline credentials in URLs | `postgres://<user>:<pw>@db/app` | redacted regardless of the env-var name |
+| Vendor token formats | GitHub PATs (`ghp_…`), AWS access keys (`AKIA…`), Tailscale auth keys (`tskey-…-…`), Discord/Slack webhooks, JWTs | redacted regardless of the env-var name |
 | Email addresses | `NOTIFY: user@example.com` | `NOTIFY: **REDACTED**` |
 | Home directory paths | `/home/john/media:/tv` | `~/media:/tv` |
-
-Detected patterns: `password`, `secret`, `token`, `api_key`, `auth`, `credential`, `private_key`, `vpn_user`, and more.
 
 Safe-listed keys (kept as-is): `PUID`, `PGID`, `TZ`, `UMASK`, `LOG_LEVEL`, `WEBUI_PORT`, etc.
 
@@ -56,7 +73,7 @@ The Advanced Settings panel allows custom sensitive patterns (regex) and safe ke
 
 ## Self-Hosting
 
-Download `compose-sanitizer.html` from the [latest release](https://github.com/bakerboy448/compose-sanitizer/releases/latest) and open it in any browser. Everything runs client-side in a single HTML file — no server, no network requests, no data leaves your browser.
+Download `docker-compose-debugger.html` from the [latest release](https://github.com/baker-scripts/docker-compose-debugger/releases/latest) and open it in any browser. Everything runs client-side in a single HTML file — no server, no network requests, no data leaves your browser.
 
 ## Development
 
@@ -73,19 +90,21 @@ Single-page app built with Vite + vanilla TypeScript. The build produces one sel
 
 ```
 src/
-  dom.ts          # Shared el() DOM helper (no innerHTML)
-  patterns.ts     # Type guards, regex patterns, utility functions
-  extract.ts      # Extracts YAML from mixed console output
-  redact.ts       # Redacts sensitive values, anonymizes paths
-  noise.ts        # Strips auto-generated noise fields
-  advisories.ts   # Detects misconfigurations (hardlinks, etc.)
-  services.ts     # Parses compose object into ServiceInfo[]
-  markdown.ts     # Generates markdown table from ServiceInfo[]
-  cards.ts        # Renders per-service card DOM
-  config.ts       # Customizable patterns, localStorage persistence
-  clipboard.ts    # Copy, PrivateBin, and Gist sharing
-  disclaimer.ts   # PII warnings and legal disclaimers
-  main.ts         # UI assembly, tabs, and event wiring
+  dom.ts            # Shared el() DOM helper (no innerHTML)
+  patterns.ts       # Key + value regex patterns, type guards, helpers
+  extract.ts        # Extracts YAML from mixed console output
+  redact.ts         # Redacts sensitive values, anonymizes paths
+  noise.ts          # Strips auto-generated noise fields
+  advisories.ts     # Detects misconfigurations (hardlinks, etc.)
+  services.ts       # Parses compose object into ServiceInfo[] + UserGroupInfo
+  markdown.ts       # GitHub + Discord markdown generators
+  cards.ts          # Renders per-service card DOM
+  volume-table.ts   # Service / User-Group / Volume comparison tables
+  volume-utils.ts   # Volume parsing + matrix builder
+  config.ts         # Customizable patterns, localStorage persistence
+  clipboard.ts      # Copy (with execCommand fallback), PrivateBin, Gist
+  disclaimer.ts     # PII warnings and legal disclaimers
+  main.ts           # UI assembly, tabs, and event wiring
 ```
 
 ### Testing
@@ -100,6 +119,16 @@ npx vitest run --coverage      # Run with coverage report
 - All processing happens in your browser — no data is sent anywhere
 - No analytics, tracking, or external requests
 - The "Open PrivateBin" and "Open GitHub Gist" buttons copy to clipboard and open a new tab — you paste manually
+
+## Contributors
+
+<a href="https://github.com/baker-scripts/docker-compose-debugger/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=baker-scripts/docker-compose-debugger" alt="Contributors" />
+</a>
+
+## Disclaimer
+
+This tool is provided as-is with no warranty. While all processing happens client-side, always verify redaction output before sharing. The authors are not responsible for any accidentally exposed secrets.
 
 ## License
 

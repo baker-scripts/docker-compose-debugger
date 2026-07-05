@@ -6,15 +6,49 @@ on:
   push:
     branches: [main]
 
+permissions:
+  contents: read
+
 jobs:
   test:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v6
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
-          node-version: 22.22.0
+          node-version: 24.14.0
           cache: npm
       - run: npm ci
       - run: npx tsc --noEmit
       - run: npx vitest run --coverage --passWithNoTests
+
+  security:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24.14.0
+          cache: npm
+
+      - run: npm ci
+
+      # Dependency audit — fail on high/critical vulnerabilities
+      - name: npm audit
+        run: npm audit --audit-level=high
+
+      # Build output size gate — single-file HTML should stay under 150 KB
+      - name: Build and check output size
+        run: |
+          npm run build
+          size=$(stat -c%s dist/index.html)
+          echo "Build output: ${size} bytes"
+          if [ "$size" -gt 153600 ]; then
+            echo "::error::Build output exceeds 150 KB (${size} bytes) — unexpected bloat"
+            exit 1
+          fi

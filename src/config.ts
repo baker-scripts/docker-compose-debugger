@@ -18,6 +18,15 @@ export const DEFAULT_CONFIG: SanitizerConfig = {
     'credential',
     'private[_\\-.]?key',
     'vpn[_\\-.]?user',
+    '[_.\\-](url|uri|dsn|conn(?:ection)?(?:_string)?)$',
+    '^(database|redis|mongo|amqp|rabbit|celery|postgres|mysql|elastic)[_.\\-]?(url|uri|dsn)?$',
+    'aws[_\\-.]?(access|secret)[_\\-.]?key',
+    'tailscale[_\\-.]?(auth)?[_\\-.]?key',
+    'webhook',
+    'pat$',
+    '^gh[_\\-.]?(token|pat)',
+    '^(discord|slack|telegram|matrix|teams)[_\\-.]',
+    '\\b(guild|channel|server|workspace|tenant|application|bot|client)[_\\-.]?id$',
   ],
   safeKeys: [
     'PUID', 'PGID', 'TZ', 'UMASK', 'UMASK_SET',
@@ -52,7 +61,7 @@ export function compileConfig(config: SanitizerConfig): {
   }
   return {
     sensitivePatterns: compiled,
-    safeKeys: new Set(config.safeKeys),
+    safeKeys: new Set(config.safeKeys.map(k => k.toUpperCase())),
   }
 }
 

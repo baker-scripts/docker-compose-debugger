@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { redactCompose } from '../src/redact'
+import { compileConfig } from '../src/config'
 
 describe('redactCompose', () => {
   it('redacts sensitive env vars in dict style', () => {
@@ -166,6 +167,39 @@ services:
     expect(result.stats.anonymizedPaths).toBe(1)
   })
 
+  it('tracks which keys were redacted', () => {
+    const input = `
+services:
+  sonarr:
+    environment:
+      API_KEY: abc123
+      MYSQL_PASSWORD: secret
+      PUID: "1000"
+  radarr:
+    environment:
+      API_KEY: def456
+      NOTIFY: user@example.com
+`
+    const result = redactCompose(input)
+    expect(result.stats.redactedKeys).toContain('API_KEY')
+    expect(result.stats.redactedKeys).toContain('MYSQL_PASSWORD')
+    expect(result.stats.redactedKeys).toContain('NOTIFY')
+    expect(result.stats.redactedKeys).toHaveLength(4)
+  })
+
+  it('tracks redacted keys for array-style env vars', () => {
+    const input = `
+services:
+  app:
+    environment:
+      - 'SECRET_TOKEN=myvalue'
+      - 'PUID=1000'
+`
+    const result = redactCompose(input)
+    expect(result.stats.redactedKeys).toContain('SECRET_TOKEN')
+    expect(result.stats.redactedKeys).toHaveLength(1)
+  })
+
   it('handles env vars without values in dict style', () => {
     const input = `
 services:
@@ -223,6 +257,25 @@ services:
       safeKeys: new Set(['AUTH_TOKEN']),
     }
     const result = redactCompose(input, customConfig)
+    expect(result.error).toBeNull()
+    expect(result.output).toContain('should-be-safe')
+    expect(result.output).not.toContain('should-be-redacted')
+    expect(result.stats.redactedEnvVars).toBe(1)
+  })
+
+  it('respects lowercase safe keys via compileConfig (Advanced Settings path)', () => {
+    const input = `
+services:
+  app:
+    environment:
+      AUTH_TOKEN: should-be-safe
+      SECRET: should-be-redacted
+`
+    const compiled = compileConfig({
+      sensitivePatterns: ['secret', 'auth', 'token'],
+      safeKeys: ['auth_token'],
+    })
+    const result = redactCompose(input, compiled)
     expect(result.error).toBeNull()
     expect(result.output).toContain('should-be-safe')
     expect(result.output).not.toContain('should-be-redacted')

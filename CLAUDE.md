@@ -1,4 +1,4 @@
-# Compose Debugger
+# Docker Compose Debugger
 
 ## Build
 npm install && npm run build

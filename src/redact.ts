@@ -1,5 +1,5 @@
 import { load, dump } from 'js-yaml'
-import { isRecord, isSensitiveKey, containsEmail, anonymizeHomePath } from './patterns'
+import { anonymizeHomePath, containsEmail, containsSensitiveValue, isRecord, isSensitiveKey } from './patterns'
 
 const REDACTED = '**REDACTED**'
 
@@ -7,6 +7,7 @@ export interface RedactStats {
   readonly redactedEnvVars: number
   readonly redactedEmails: number
   readonly anonymizedPaths: number
+  readonly redactedKeys: readonly string[]
 }
 
 export interface RedactResult {
@@ -22,7 +23,7 @@ export interface PatternConfig {
 
 function redactEnvDict(
   env: Record<string, unknown>,
-  stats: { redactedEnvVars: number; redactedEmails: number },
+  stats: { redactedEnvVars: number; redactedEmails: number; redactedKeys: string[] },
   config: PatternConfig,
 ): Record<string, unknown> {
   const result: Record<string, unknown> = {}
@@ -30,10 +31,18 @@ function redactEnvDict(
     const strValue = value == null ? '' : String(value)
     if (isSensitiveKey(key, config.sensitivePatterns, config.safeKeys)) {
       result[key] = strValue === '' ? '' : REDACTED
-      if (strValue !== '') stats.redactedEnvVars++
+      if (strValue !== '') {
+        stats.redactedEnvVars++
+        stats.redactedKeys.push(key)
+      }
+    } else if (containsSensitiveValue(strValue)) {
+      result[key] = REDACTED
+      stats.redactedEnvVars++
+      stats.redactedKeys.push(key)
     } else if (containsEmail(strValue)) {
       result[key] = REDACTED
       stats.redactedEmails++
+      stats.redactedKeys.push(key)
     } else {
       result[key] = value
     }
@@ -43,7 +52,7 @@ function redactEnvDict(
 
 function redactEnvArray(
   env: readonly unknown[],
-  stats: { redactedEnvVars: number; redactedEmails: number },
+  stats: { redactedEnvVars: number; redactedEmails: number; redactedKeys: string[] },
   config: PatternConfig,
 ): readonly string[] {
   return env.map(item => {
@@ -56,10 +65,17 @@ function redactEnvArray(
 
     if (isSensitiveKey(key, config.sensitivePatterns, config.safeKeys)) {
       stats.redactedEnvVars++
+      stats.redactedKeys.push(key)
+      return `${key}=${REDACTED}`
+    }
+    if (containsSensitiveValue(value)) {
+      stats.redactedEnvVars++
+      stats.redactedKeys.push(key)
       return `${key}=${REDACTED}`
     }
     if (containsEmail(value)) {
       stats.redactedEmails++
+      stats.redactedKeys.push(key)
       return `${key}=${REDACTED}`
     }
     return str
@@ -89,7 +105,7 @@ function anonymizeVolumes(
 
 function redactService(
   service: Record<string, unknown>,
-  stats: { redactedEnvVars: number; redactedEmails: number; anonymizedPaths: number },
+  stats: { redactedEnvVars: number; redactedEmails: number; anonymizedPaths: number; redactedKeys: string[] },
   config: PatternConfig,
 ): Record<string, unknown> {
   const result: Record<string, unknown> = { ...service }
@@ -110,7 +126,7 @@ function redactService(
 }
 
 export function redactCompose(raw: string, config: PatternConfig = {}): RedactResult {
-  const emptyStats: RedactStats = { redactedEnvVars: 0, redactedEmails: 0, anonymizedPaths: 0 }
+  const emptyStats: RedactStats = { redactedEnvVars: 0, redactedEmails: 0, anonymizedPaths: 0, redactedKeys: [] }
 
   let parsed: unknown
   try {
@@ -131,7 +147,7 @@ export function redactCompose(raw: string, config: PatternConfig = {}): RedactRe
     }
   }
 
-  const stats = { redactedEnvVars: 0, redactedEmails: 0, anonymizedPaths: 0 }
+  const stats = { redactedEnvVars: 0, redactedEmails: 0, anonymizedPaths: 0, redactedKeys: [] as string[] }
   const compose: Record<string, unknown> = { ...parsed }
 
   const services = parsed['services']

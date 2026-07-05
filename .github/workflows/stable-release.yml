@@ -14,11 +14,12 @@ permissions:
 jobs:
   release:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v6
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
-          node-version: 22.22.0
+          node-version: 24.14.0
           cache: npm
 
       - name: Validate version format
@@ -42,13 +43,16 @@ jobs:
       - name: Update package.json version
         env:
           VERSION: ${{ inputs.version }}
-        run: npm version "$VERSION" --no-git-tag-version
+        # `npm version` errors when the requested version equals the current
+        # (which happens when the version was bumped in a PR before the
+        # release workflow runs). `npm pkg set` is idempotent.
+        run: npm pkg set "version=$VERSION"
 
       - run: npm ci
       - run: npx tsc --noEmit
       - run: npx vitest run --passWithNoTests
       - run: npm run build
-      - run: cp dist/index.html compose-sanitizer.html
+      - run: cp dist/index.html docker-compose-debugger.html
 
       - name: Commit version bump and tag
         env:
@@ -57,13 +61,29 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add package.json package-lock.json
-          git commit -m "chore: release v${VERSION}"
+          # If the version was already bumped in a PR (so package.json/lock
+          # are unchanged here) skip the commit. The tag and push still need
+          # to run.
+          if ! git diff --cached --quiet; then
+            git commit -m "chore: release v${VERSION}"
+          else
+            echo "package.json already at v${VERSION}; skipping bump commit"
+          fi
           git tag "v${VERSION}"
           git push origin main --follow-tags
 
+      # Immutable releases require draft-first so assets can be attached
+      # before the release is locked.
       - uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ inputs.version }}
-          files: compose-sanitizer.html
+          files: docker-compose-debugger.html
           generate_release_notes: true
           prerelease: false
+          draft: true
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: v${{ inputs.version }}
+        run: gh release edit "$TAG" --repo "${{ github.repository }}" --draft=false

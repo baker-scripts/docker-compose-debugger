@@ -85,6 +85,17 @@ describe('config', () => {
     expect(compiled.safeKeys.has('OTHER')).toBe(false)
   })
 
+  it('compileConfig normalizes safe keys to uppercase for case-insensitive lookup', () => {
+    const config = {
+      sensitivePatterns: ['secret'],
+      safeKeys: ['auth_token', 'MY_KEY'],
+    }
+    const compiled = compileConfig(config)
+    expect(compiled.safeKeys.has('AUTH_TOKEN')).toBe(true)
+    expect(compiled.safeKeys.has('MY_KEY')).toBe(true)
+    expect(compiled.safeKeys.has('auth_token')).toBe(false)
+  })
+
   it('compileConfig skips invalid regex patterns gracefully', () => {
     const config = {
       sensitivePatterns: ['valid', '[invalid', 'also_valid'],

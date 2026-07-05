@@ -1,6 +1,6 @@
 {
-  "name": "compose-sanitizer",
-  "version": "0.1.0",
+  "name": "docker-compose-debugger",
+  "version": "1.0.2",
   "description": "Browser-based Docker Compose debugger — redacts secrets, shows service cards, and generates markdown tables for support channels",
   "type": "module",
   "scripts": {
@@ -13,7 +13,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/bakerboy448/compose-sanitizer.git"
+    "url": "git+https://github.com/baker-scripts/docker-compose-debugger.git"
   },
   "keywords": [
     "docker",
@@ -25,9 +25,9 @@
   "author": "bakerboy448",
   "license": "MIT",
   "bugs": {
-    "url": "https://github.com/bakerboy448/compose-sanitizer/issues"
+    "url": "https://github.com/baker-scripts/docker-compose-debugger/issues"
   },
-  "homepage": "https://bakerboy448.github.io/compose-sanitizer/",
+  "homepage": "https://baker-scripts.github.io/docker-compose-debugger/",
   "dependencies": {
     "js-yaml": "^4.1.1"
   },
