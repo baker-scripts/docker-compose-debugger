@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { redactCompose } from '../src/redact'
+import { compileConfig } from '../src/config'
 
 describe('redactCompose', () => {
   it('redacts sensitive env vars in dict style', () => {
@@ -256,6 +257,25 @@ services:
       safeKeys: new Set(['AUTH_TOKEN']),
     }
     const result = redactCompose(input, customConfig)
+    expect(result.error).toBeNull()
+    expect(result.output).toContain('should-be-safe')
+    expect(result.output).not.toContain('should-be-redacted')
+    expect(result.stats.redactedEnvVars).toBe(1)
+  })
+
+  it('respects lowercase safe keys via compileConfig (Advanced Settings path)', () => {
+    const input = `
+services:
+  app:
+    environment:
+      AUTH_TOKEN: should-be-safe
+      SECRET: should-be-redacted
+`
+    const compiled = compileConfig({
+      sensitivePatterns: ['secret', 'auth', 'token'],
+      safeKeys: ['auth_token'],
+    })
+    const result = redactCompose(input, compiled)
     expect(result.error).toBeNull()
     expect(result.output).toContain('should-be-safe')
     expect(result.output).not.toContain('should-be-redacted')

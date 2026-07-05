@@ -275,4 +275,25 @@ describe('stripNoise', () => {
     expect(env).not.toContain('UNBOUND_NAMESERVERS=')
     expect(env).toContain('PUID=1000')
   })
+
+  it('strips empty env values in dict style', () => {
+    const input = {
+      services: {
+        app: {
+          environment: {
+            VPN_PIA_USER: '',
+            VPN_LAN_NETWORK: '',
+            UNBOUND_NAMESERVERS: '',
+            PUID: '1000',
+          },
+        },
+      },
+    }
+    const result = stripNoise(input)
+    const env = (result['services'] as Record<string, Record<string, unknown>>)['app']?.['environment'] as Record<string, unknown>
+    expect(env).not.toHaveProperty('VPN_PIA_USER')
+    expect(env).not.toHaveProperty('VPN_LAN_NETWORK')
+    expect(env).not.toHaveProperty('UNBOUND_NAMESERVERS')
+    expect(env).toHaveProperty('PUID', '1000')
+  })
 })

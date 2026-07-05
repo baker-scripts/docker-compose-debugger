@@ -61,7 +61,7 @@ export function compileConfig(config: SanitizerConfig): {
   }
   return {
     sensitivePatterns: compiled,
-    safeKeys: new Set(config.safeKeys),
+    safeKeys: new Set(config.safeKeys.map(k => k.toUpperCase())),
   }
 }
 

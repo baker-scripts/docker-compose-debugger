@@ -62,7 +62,10 @@ function stripNoiseEnvDict(env: Record<string, unknown>): Record<string, unknown
   const result: Record<string, unknown> = {}
   for (const [key, value] of Object.entries(env)) {
     if (!isNoiseEnvKey(key)) {
-      result[key] = value
+      const strValue = value == null ? '' : String(value)
+      if (strValue !== '') {
+        result[key] = value
+      }
     }
   }
   return result
