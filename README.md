@@ -1,5 +1,7 @@
 # Docker Compose Debugger
 
+[![CI](https://github.com/baker-scripts/docker-compose-debugger/actions/workflows/ci.yml/badge.svg)](https://github.com/baker-scripts/docker-compose-debugger/actions/workflows/ci.yml)
+
 Browser-based tool that turns messy Docker Compose output into clean, readable debugging views. Paste output from `docker-autocompose`, `docker compose config`, or raw `docker-compose.yml` — get sanitized YAML with sensitive values redacted, per-service cards, volume comparison tables, and a markdown table ready for Discord or GitHub support channels.
 
 **Live:** [baker-scripts.github.io/docker-compose-debugger](https://baker-scripts.github.io/docker-compose-debugger/)
@@ -120,6 +122,10 @@ npx vitest run --coverage      # Run with coverage report
 - No analytics, tracking, or external requests
 - The "Open PrivateBin" and "Open GitHub Gist" buttons copy to clipboard and open a new tab — you paste manually
 
+## Contributing
+
+Issues and pull requests welcome. See the [contributing guidelines](https://github.com/baker-scripts/.github/blob/main/CONTRIBUTING.md); [open an issue](https://github.com/baker-scripts/docker-compose-debugger/issues) to discuss larger changes.
+
 ## Contributors
 
 <a href="https://github.com/baker-scripts/docker-compose-debugger/graphs/contributors">
@@ -132,4 +138,4 @@ This tool is provided as-is with no warranty. While all processing happens clien
 
 ## License
 
-MIT
+[MIT](LICENSE)
