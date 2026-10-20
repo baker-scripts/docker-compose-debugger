@@ -1,27 +1,58 @@
 # Docker Compose Debugger
 
 [![CI](https://github.com/baker-scripts/docker-compose-debugger/actions/workflows/ci.yml/badge.svg)](https://github.com/baker-scripts/docker-compose-debugger/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/baker-scripts/docker-compose-debugger)](https://github.com/baker-scripts/docker-compose-debugger/releases/latest)
 
-Browser-based tool that turns messy Docker Compose output into clean, readable debugging views. Paste output from `docker-autocompose`, `docker compose config`, or raw `docker-compose.yml` — get sanitized YAML with sensitive values redacted, per-service cards, volume comparison tables, and a markdown table ready for Discord or GitHub support channels.
+Browser tool that turns Docker Compose output into a sanitized, readable view for support channels. Paste `docker-autocompose` output, `docker compose config` output, or a raw `docker-compose.yml`. You get redacted YAML, per-service cards, User/Group and volume comparison tables, and markdown ready for GitHub or Discord.
 
-**Live:** [baker-scripts.github.io/docker-compose-debugger](https://baker-scripts.github.io/docker-compose-debugger/)
+Everything runs client-side. No data leaves your browser.
 
-## Features
+## Quick Start
 
-### Three views
+1. Open [baker-scripts.github.io/docker-compose-debugger](https://baker-scripts.github.io/docker-compose-debugger/).
+2. Generate the input. The page suggests this command:
 
-- **Table** *(default)* — service overview + User/Group comparison + Volume comparison, all in one place. Best for quickly spotting UID/GID mismatches or which services share which host paths.
-- **Cards** — per-service view showing image, ports, volumes, networks, environment, and extras (user, restart policy, hostname, depends_on, resource limits). Empty sections are omitted.
-- **YAML** — full sanitized YAML output, ready to paste into a gist.
+   ```bash
+   docker run --rm -v /var/run/docker.sock:/var/run/docker.sock ghcr.io/red5d/docker-autocompose <container_name>
+   ```
 
-### Copy as Markdown — GitHub or Discord
+   You can also paste `docker compose config` output or a `docker-compose.yml` directly (512 KB maximum).
+3. Click Sanitize.
+4. Check the output, then use Copy MD (GitHub), Copy MD (Discord), or Copy to Clipboard.
 
-Two dedicated buttons:
+To self-host, download `docker-compose-debugger.html` from the [latest release](https://github.com/baker-scripts/docker-compose-debugger/releases/latest) and open it in any browser. It is a single HTML file and needs no server.
 
-- **Copy MD (GitHub)** — `### heading` + bare pipe-table markdown. Renders as a real table on GitHub.
-- **Copy MD (Discord)** — `**bold**` labels + each table wrapped in a fenced code block. Discord doesn't render pipe tables, so the fence preserves alignment in monospace and prevents `_underscore_` / `*asterisk*` characters in volume paths from triggering inline formatting.
+## Configuration
+
+Open Advanced Settings in the page to edit the redaction rules. Settings persist in browser `localStorage` (key `compose-sanitizer-config`).
+
+| Setting | Format | Default |
+|---------|--------|---------|
+| Sensitive patterns | One regex per line, matched against env keys | Built-in list (passwords, secrets, tokens, API keys, auth, credentials, URL/DSN keys, webhooks, chat-platform IDs) |
+| Safe keys | One key per line, never redacted | `PUID`, `PGID`, `TZ`, `UMASK`, `UMASK_SET`, `HOME`, `PATH`, `LANG`, `LC_ALL`, `LOG_LEVEL`, `WEBUI_PORT` |
+
+Save Settings applies changes. Reset to Defaults restores the built-in lists.
+
+## Usage
+
+### Views
+
+- Table (default): service overview, User/Group comparison, and Volume comparison. Best for spotting UID/GID mismatches or which services share which host paths.
+- Cards: per-service view showing image, ports, volumes, networks, environment, and extras (user, restart policy, hostname, depends_on, resource limits). Empty sections are omitted.
+- YAML: full sanitized YAML output, ready to paste into a gist.
+
+### Copy as markdown
+
+Two buttons:
+
+- Copy MD (GitHub): `### heading` plus bare pipe-table markdown. Renders as a real table on GitHub.
+- Copy MD (Discord): `**bold**` labels, with each table wrapped in a fenced code block. Discord doesn't render pipe tables, so the fence preserves alignment in monospace and prevents `_underscore_` / `*asterisk*` characters in volume paths from triggering inline formatting.
 
 Both formats include the Services overview, User/Group comparison, and Volume comparison sections.
+
+### Share buttons
+
+Open PrivateBin, Open logs.notifiarr.com, and Open GitHub Gist copy the output to the clipboard and open the site in a new tab. You paste manually. For PrivateBin, set the expiry to 1 week or longer so support can review it.
 
 ### User / Group merging
 
@@ -43,9 +74,9 @@ Lookups are case-insensitive (so a typo'd `Puid` still surfaces). When the direc
 | Email addresses | `NOTIFY: user@example.com` | `NOTIFY: **REDACTED**` |
 | Home directory paths | `/home/john/media:/tv` | `~/media:/tv` |
 
-Safe-listed keys (kept as-is): `PUID`, `PGID`, `TZ`, `UMASK`, `LOG_LEVEL`, `WEBUI_PORT`, etc.
+Safe-listed keys are kept as-is (see Configuration).
 
-### Noise Stripping
+### Noise stripping
 
 Removes auto-generated fields that clutter compose output:
 
@@ -59,31 +90,19 @@ Removes auto-generated fields that clutter compose output:
 
 Detects common misconfigurations and shows warnings with links to documentation:
 
-- **Hardlinks advisory**: Warns when separate `/tv`, `/movies`, etc. mounts prevent hardlinks and instant moves
+- Hardlinks: warns when separate `/tv`, `/movies`, etc. mounts prevent hardlinks and instant moves
 
-### Input Handling
+### Input handling
 
-Accepts multiple input formats:
-
-- Raw `docker-compose.yml` content
-- Output from `docker compose config`
-- Output from [`docker-autocompose`](https://github.com/Red5d/docker-autocompose) (strips shell prompts and non-YAML lines)
-
-### Customizable Patterns
-
-The Advanced Settings panel allows custom sensitive patterns (regex) and safe key lists. Configuration persists in `localStorage`.
-
-## Self-Hosting
-
-Download `docker-compose-debugger.html` from the [latest release](https://github.com/baker-scripts/docker-compose-debugger/releases/latest) and open it in any browser. Everything runs client-side in a single HTML file — no server, no network requests, no data leaves your browser.
+Accepts raw `docker-compose.yml` content, `docker compose config` output, and [`docker-autocompose`](https://github.com/Red5d/docker-autocompose) output (shell prompts and non-YAML lines are stripped).
 
 ## Development
 
 ```bash
 npm install
-npm run dev        # Start Vite dev server
-npm test           # Run tests (vitest)
-npm run build      # Build single-file dist/index.html
+npm run dev        # Vite dev server
+npm test           # vitest
+npm run build      # type-check, then build single-file dist/index.html
 ```
 
 ### Architecture
@@ -109,18 +128,12 @@ src/
   main.ts           # UI assembly, tabs, and event wiring
 ```
 
-### Testing
-
-```bash
-npm test                       # Run tests
-npx vitest run --coverage      # Run with coverage report
-```
+Coverage: `npm run test:coverage`.
 
 ## Privacy
 
-- All processing happens in your browser — no data is sent anywhere
-- No analytics, tracking, or external requests
-- The "Open PrivateBin" and "Open GitHub Gist" buttons copy to clipboard and open a new tab — you paste manually
+- All processing happens in your browser. No analytics, tracking, or external requests.
+- Review the output before sharing. Redaction is pattern-based and can miss values.
 
 ## Contributing
 
